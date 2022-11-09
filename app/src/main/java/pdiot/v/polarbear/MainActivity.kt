@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalContext
@@ -61,7 +62,7 @@ fun DeviceIdTextField() {
     ) {
         Column (Modifier.height(IntrinsicSize.Min)) {
             val localFocusManager = LocalFocusManager.current
-            var respeckId by remember { mutableStateOf(TextFieldValue("")) }
+            var respeckId by remember { mutableStateOf(TextFieldValue("E7:6E:9C:24:55:9A")) }
             OutlinedTextField(value = respeckId,
                 modifier = Modifier
                     .padding(8.dp)
@@ -81,7 +82,10 @@ fun DeviceIdTextField() {
                 )
             )
 
-            var thingyId by remember { mutableStateOf(TextFieldValue("")) }
+            Text(text = respeckId.text,
+                modifier = Modifier.align(alignment = Alignment.CenterHorizontally))
+
+            var thingyId by remember { mutableStateOf(TextFieldValue("DF:80:AA:B3:5A:F7")) }
             OutlinedTextField(value = thingyId,
                 modifier = Modifier
                     .padding(8.dp)
@@ -101,24 +105,14 @@ fun DeviceIdTextField() {
                 )
             )
 
+            Text(text = thingyId.text,
+                modifier = Modifier.align(alignment = Alignment.CenterHorizontally), )
+
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
-            OutlinedButton(
-                modifier = Modifier
-                    .padding(8.dp)
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                onClick = {
-                    scope.launch {
-                        setSoundAsTrue(context, true)
-                    }
-                }
-            ) {
-                Text("Save")
-            }
 
-            val userNameKey = booleanPreferencesKey("sound")
-            val userName = flow<Boolean> {
+            val userNameKey = stringPreferencesKey("sound")
+            val userName = flow<String> {
                 context.dataStore.data.map {
                     it[userNameKey]
                 }.collect(collector = {
@@ -126,7 +120,7 @@ fun DeviceIdTextField() {
                         this.emit(it)
                     }
                 })
-            }.collectAsState(initial = false)
+            }.collectAsState(initial = "")
 
             OutlinedButton(
                 modifier = Modifier
@@ -134,7 +128,21 @@ fun DeviceIdTextField() {
                     .fillMaxWidth()
                     .height(IntrinsicSize.Min),
                 onClick = {
-                    Toast.makeText(context, userName.value.toString(), Toast.LENGTH_SHORT).show()
+                    scope.launch {
+                        setSoundAsTrue(context, respeckId.text)
+                    }
+                }
+            ) {
+                Text("Save")
+            }
+
+            OutlinedButton(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+                onClick = {
+                    Toast.makeText(context, userName.value, Toast.LENGTH_SHORT).show()
                 }
             ) {
                 Text("Read")
@@ -143,8 +151,8 @@ fun DeviceIdTextField() {
     }
 }
 
-suspend fun setSoundAsTrue(context: Context, value: Boolean) {
-    val userNameKey = booleanPreferencesKey("sound")
+suspend fun setSoundAsTrue(context: Context, value: String) {
+    val userNameKey = stringPreferencesKey("sound")
     context.dataStore.edit {
         it[userNameKey] = value
     }
