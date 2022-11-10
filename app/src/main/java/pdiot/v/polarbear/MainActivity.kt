@@ -1,10 +1,15 @@
 package pdiot.v.polarbear
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,6 +26,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -31,9 +37,10 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import pdiot.v.polarbear.bluetooth.ConnectingActivity
 import pdiot.v.polarbear.ui.theme.PolarBearTheme
 
-
+private fun PackageManager.missingSystemFeature(name: String): Boolean = !hasSystemFeature(name)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,11 +52,12 @@ class MainActivity : ComponentActivity() {
                     DeviceIdTextField()
                 }
             }
-
-
         }
+
+
     }
 }
+
 
 @Composable
 fun DeviceIdTextField() {
@@ -61,7 +69,10 @@ fun DeviceIdTextField() {
         elevation = 10.dp,
     ) {
         Column (Modifier.height(IntrinsicSize.Min)) {
+            val context = LocalContext.current
             val localFocusManager = LocalFocusManager.current
+            val scope = rememberCoroutineScope()
+
             var respeckId by remember { mutableStateOf(TextFieldValue("E7:6E:9C:24:55:9A")) }
             OutlinedTextField(value = respeckId,
                 modifier = Modifier
@@ -108,9 +119,6 @@ fun DeviceIdTextField() {
             Text(text = thingyId.text,
                 modifier = Modifier.align(alignment = Alignment.CenterHorizontally), )
 
-            val context = LocalContext.current
-            val scope = rememberCoroutineScope()
-
             val userNameKey = stringPreferencesKey("sound")
             val userName = flow<String> {
                 context.dataStore.data.map {
@@ -147,6 +155,20 @@ fun DeviceIdTextField() {
             ) {
                 Text("Read")
             }
+
+            OutlinedButton(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+                onClick = {
+                    context.startActivity(Intent(context, ConnectingActivity::class.java))
+                }
+            ) {
+                Text("Pair")
+            }
+
+
         }
     }
 }
