@@ -81,7 +81,6 @@ class ConnectingActivity : AppCompatActivity() {
             ).apply()
 
             startSpeckService()
-
         }
 
         restartConnectionButton.setOnClickListener {
@@ -92,7 +91,7 @@ class ConnectingActivity : AppCompatActivity() {
         // first read shared preferences to see if there was a respeck there already
         sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, MODE_PRIVATE)
         if (sharedPreferences.contains(Constants.RESPECK_MAC_ADDRESS_PREF)) {
-            Log.i("sharedpref", "Already saw a respeckID")
+            Log.i("shared-pref", "Already saw a respeckID")
             respeck_code.setText(
                 sharedPreferences.getString(
                     Constants.RESPECK_MAC_ADDRESS_PREF,
@@ -106,8 +105,7 @@ class ConnectingActivity : AppCompatActivity() {
         }
 
         if (sharedPreferences.contains(Constants.THINGY_MAC_ADDRESS_PREF)) {
-            Log.i("sharedpref", "Already saw a thingy ID")
-
+            Log.i("shared-pref", "Already saw a thingy ID")
             thingy_code.setText(
                 sharedPreferences.getString(
                     Constants.THINGY_MAC_ADDRESS_PREF,
@@ -156,7 +154,7 @@ class ConnectingActivity : AppCompatActivity() {
     fun startSpeckService() {
         // TODO if it's not already running
         val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, applicationContext)
-        Log.i("service","isServiceRunning = " + isServiceRunning)
+        Log.i("service", "isServiceRunning = $isServiceRunning")
 
         if (!isServiceRunning) {
             Log.i("service", "Starting BLT service")
@@ -168,7 +166,6 @@ class ConnectingActivity : AppCompatActivity() {
             this.stopService(Intent(this, BluetoothSpeckService::class.java))
             Toast.makeText(this, "restarting service with new sensors", Toast.LENGTH_SHORT).show()
             this.startService(Intent(this, BluetoothSpeckService::class.java))
-
         }
     }
 
