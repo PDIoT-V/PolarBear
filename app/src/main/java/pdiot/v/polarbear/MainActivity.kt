@@ -5,17 +5,20 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Bundle
-import android.os.Handler
-import android.os.HandlerThread
-import android.os.Looper
+import android.os.*
 import android.util.Log
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
@@ -23,16 +26,31 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.InternalTextApi
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -43,8 +61,17 @@ import pdiot.v.polarbear.utils.Constants
 import pdiot.v.polarbear.utils.RESpeckLiveData
 import pdiot.v.polarbear.utils.ThingyLiveData
 import pdiot.v.polarbear.utils.Utils
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
+import kotlin.system.exitProcess
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.onEach
+
+val Context.deviceDataStore: DataStore<Preferences> by preferencesDataStore(name = "deviceSettings")
 
 class MainActivity : ComponentActivity() {
     private val activityTAG = "MainActivity"
@@ -59,11 +86,8 @@ class MainActivity : ComponentActivity() {
     lateinit var respeckLiveData: RESpeckLiveData
     lateinit var thingyLiveData: ThingyLiveData
 
-    var defaultRespeckId = "E7:6E:9C:24:55:9A"
-    var defaultThingyId = "DF:80:AA:B3:5A:F7"
-
-    var thingyOn = false
-    var respeckOn = false
+    private var defaultRespeckId = "E7:6E:9C:24:55:9A"
+    private var defaultThingyId = "DF:80:AA:B3:5A:F7"
 
     private val locationPermissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -83,36 +107,28 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-
-        val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
-
         locationPermissionRequest.launch(arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION))
 
-//        setupBluetoothService()
-
-        sharedPreferences.edit().putString(
-            Constants.RESPECK_MAC_ADDRESS_PREF,
-            defaultRespeckId
-        ).apply()
-        sharedPreferences.edit().putInt(Constants.RESPECK_VERSION, 6).apply()
-
-        sharedPreferences.edit().putString(
-            Constants.THINGY_MAC_ADDRESS_PREF,
-            defaultThingyId
-        ).apply()
+        resetDeviceStates()
 
         startSpeckService()
 
-        Log.d(activityTAG, "onCreate: setting up respeck receiver")
+        Log.d(activityTAG, "onCreate: registering respeck receiver")
         // register respeck receiver
         respeckReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 if (intent.action == Constants.ACTION_RESPECK_LIVE_BROADCAST) {
-                    respeckLiveData = intent.getSerializableExtra(Constants.RESPECK_LIVE_DATA) as RESpeckLiveData
+                    respeckLiveData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getSerializableExtra(Constants.RESPECK_LIVE_DATA, RESpeckLiveData::class.java)!!
+                    } else {
+                        intent.getSerializableExtra(Constants.RESPECK_LIVE_DATA) as RESpeckLiveData
+                    }
+
                     Log.d("Live", "onReceive: liveData = $respeckLiveData")
                     lifecycleScope.launch {
+                        setRespeckOn(this@MainActivity)
                         setRespeckAcc(this@MainActivity,
                             "${respeckLiveData.accelX}",
                             "${respeckLiveData.accelY}",
@@ -122,7 +138,6 @@ class MainActivity : ComponentActivity() {
                             "${respeckLiveData.gyro.y}",
                             "${respeckLiveData.gyro.z}")
                     }
-                    respeckOn = true
                 }
             }
         }
@@ -139,10 +154,16 @@ class MainActivity : ComponentActivity() {
         thingyReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 if (intent.action == Constants.ACTION_THINGY_BROADCAST) {
-                    thingyLiveData = intent.getSerializableExtra(Constants.THINGY_LIVE_DATA) as ThingyLiveData
+                    thingyLiveData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getSerializableExtra(Constants.THINGY_LIVE_DATA, ThingyLiveData::class.java)!!
+                    } else {
+                        intent.getSerializableExtra(Constants.THINGY_LIVE_DATA) as ThingyLiveData
+                    }
+
                     Log.d("Live", "onReceive: thingyLiveData = $thingyLiveData")
 
                     lifecycleScope.launch {
+                        setThingyOn(this@MainActivity)
                         setThingyAcc(this@MainActivity,
                             "${thingyLiveData.accelX}",
                             "${thingyLiveData.accelY}",
@@ -156,7 +177,6 @@ class MainActivity : ComponentActivity() {
                             "${thingyLiveData.mag.y}",
                             "${thingyLiveData.mag.z}")
                     }
-                    thingyOn = true
                 }
             }
         }
@@ -172,36 +192,40 @@ class MainActivity : ComponentActivity() {
             PolarBearTheme {
                 // A surface container using the 'background' color from the theme
                 Surface(color = MaterialTheme.colors.background) {
-                    DeviceIdTextField(defaultRespeckId, defaultThingyId)
+//                    DeviceIdTextField(defaultRespeckId, defaultThingyId)
+                    MainScreen()
                 }
             }
         }
     }
 
-//    private fun setupBluetoothService() {
-//        val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, applicationContext)
-//        Log.i("debug", "isServiceRunning = $isServiceRunning")
-//
-//        // check sharedPreferences for an existing Respeck id
-//        val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
-//        if (sharedPreferences.contains(Constants.RESPECK_MAC_ADDRESS_PREF)) {
-//            Log.i("shared-pref", "Already saw a respeckID, starting service and attempting to reconnect")
-//
-//            // launch service to reconnect
-//            // start the bluetooth service if it's not already running
-//            if(!isServiceRunning) {
-//                Log.i("service", "Starting BLT service")
-//                val simpleIntent = Intent(this, BluetoothSpeckService::class.java)
-//                this.startService(simpleIntent)
-//            }
-//        }
-//        else {
-//            Log.i("shared-pref", "No Respeck seen before, must pair first")
-//            // TODO then start the service from the connection activity
-//        }
-//    }
+    override fun onDestroy() {
+        super.onDestroy()
+
+        unregisterReceiver(respeckReceiver)
+        unregisterReceiver(thingyReceiver)
+        respeckLooper.quit()
+        thingyLooper.quit()
+
+        resetDeviceStates()
+
+        exitProcess(0)
+    }
 
     private fun startSpeckService() {
+        val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
+
+        sharedPreferences.edit().putString(
+            Constants.RESPECK_MAC_ADDRESS_PREF,
+            defaultRespeckId
+        ).apply()
+        sharedPreferences.edit().putInt(Constants.RESPECK_VERSION, 6).apply()
+
+        sharedPreferences.edit().putString(
+            Constants.THINGY_MAC_ADDRESS_PREF,
+            defaultThingyId
+        ).apply()
+
         // TODO if it's not already running
         val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, applicationContext)
         Log.i("service", "isServiceRunning = $isServiceRunning")
@@ -218,8 +242,245 @@ class MainActivity : ComponentActivity() {
             this.startService(Intent(this, BluetoothSpeckService::class.java))
         }
     }
+
+    private fun resetDeviceStates() {
+        lifecycleScope.launch {
+            setRespeckOff(this@MainActivity)
+            setThingyOff(this@MainActivity)
+        }
+    }
 }
 
+@Composable
+fun MainScreen() {
+    val navController = rememberNavController ()
+    Scaffold (
+        floatingActionButtonPosition = FabPosition.End,
+        floatingActionButton = { PairingButton() },
+        bottomBar = { BottomNavigation (navController = navController) }
+    ) { paddingValues ->
+        NavigationGraph (navController = navController, modifier = Modifier.padding(paddingValues))
+    }
+}
+
+@Composable
+fun PairingButton() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val pairState = flow {
+        context.deviceDataStore.data.map {
+            it[booleanPreferencesKey("pairState")]
+        }.collect {
+            if (it != null) {
+                this.emit(it)
+            }
+        }
+    }.collectAsState(initial = false).value
+
+    FloatingActionButton(
+        backgroundColor = Color.White,
+        contentColor = Color.Blue.copy(0.7f),
+        onClick = {
+            scope.launch {
+                if (pairState) {
+                    setPairState(context, false)
+                } else {
+                    setPairState(context, true)
+                }
+            }
+        }){
+        Icon(painterResource(id = if (pairState) {
+            R.drawable.bluetooth_connected
+        } else {
+            R.drawable.bluetooth_disabled
+        }), contentDescription = "PairingState",
+         tint = if (pairState) {
+            Color.Blue.copy(0.7f)
+        } else {
+             Color.Black.copy(0.7f)
+        })
+    }
+}
+
+
+sealed class BottomNavItem(var screenTitle: String, var icon: Int, var screenRoute: String){
+    object Home : BottomNavItem("Home", R.drawable.menu, "home_route")
+    object Device: BottomNavItem("Device", R.drawable.pairing,"device_route")
+    object Account: BottomNavItem("Account", R.drawable.person,"account_route")
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalAnimationApi::class)
+@Composable
+fun HomeScreen(mainViewModel: CountViewModel = viewModel()) {
+    val seconds by mainViewModel.seconds.collectAsState(initial = "00")
+
+    Column {
+        Card (
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)) {
+            var actionList by remember {
+                mutableStateOf(listOf(
+                    ActionInfo(0, "Sitting Straight", R.drawable.sitting),
+                    ActionInfo(1, "Sitting Bent Forward", R.drawable.sitting),
+                    ActionInfo(2, "Sitting Bent Backward", R.drawable.sitting),
+                    ActionInfo(3, "Desk work", R.drawable.sitting),
+                    ActionInfo(4, "Standing", R.drawable.standing),
+                    ActionInfo(5, "Lying down on the left side", R.drawable.lying),
+                    ActionInfo(6, "Lying down on the right side", R.drawable.lying),
+                    ActionInfo(7, "Lying down on the front", R.drawable.lying),
+                    ActionInfo(8, "Lying down on the back", R.drawable.lying),
+                    ActionInfo(9, "Walking", R.drawable.walking),
+                    ActionInfo(10, "Running", R.drawable.running),
+                    ActionInfo(11, "Ascending stairs", R.drawable.walking),
+                    ActionInfo(12, "Descending stairs", R.drawable.walking),
+                    ActionInfo(13, "General movement", R.drawable.movement),
+                ))
+            }
+            LazyColumn {
+                items(actionList.slice(0..4), key = {it.id}) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                actionList = actionList
+                                    .shuffled()
+                                    .slice(0..4)
+                            }
+                            .animateItemPlacement()
+                            .padding(16.dp)) {
+                        Icon(painterResource(id = it.icon), it.name)
+                        Column {
+                            val actionCategory = if (it.id in listOf(0, 1, 2, 3)) { "sitting" }
+                            else { if (it.id == 4) { "standing" }
+                            else { if (it.id in listOf(5, 6, 7, 8)) { "lying" }
+                            else { if (it.id == 9) { "walking" }
+                            else { if (it.id == 10) { "running" }
+                            else { if (it.id in listOf(11, 12)) { "walking" }
+                            else { if (it.id == 13) { "movement" }
+                            else { "" } } } } } } }
+                            Text(text = actionCategory)
+                            LinearProgressIndicator()
+                        }
+                        Text(text = "${it.id}")
+                    }
+                }
+            }
+        }
+
+        AnimatedContent(
+            targetState = seconds,
+            transitionSpec = {
+                addAnimation().using(
+                    SizeTransform(clip = false)
+                )
+            }
+        ) { targetCount ->
+            Text(
+                text = "$targetCount",
+                style = TextStyle(fontSize = MaterialTheme.typography.h1.fontSize),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+
+@ExperimentalAnimationApi
+fun addAnimation(duration: Int = 300): ContentTransform {
+    return slideInVertically(animationSpec = tween(durationMillis = duration)) { height -> height } + fadeIn(
+        animationSpec = tween(durationMillis = duration)
+    ) with slideOutVertically(animationSpec = tween(durationMillis = duration)) { height -> -height } + fadeOut(
+        animationSpec = tween(durationMillis = duration)
+    )
+}
+
+class CountViewModel : ViewModel() {
+    val seconds = (0..100)
+        .asSequence()
+        .asFlow()
+        .map {
+            if (it in 0..9) "0$it" else it
+        }
+        .onEach { delay(1000) }
+}
+
+@Composable
+fun DeviceScreen() {
+    DeviceIdTextField("", "")
+}
+
+@Composable
+fun AccountScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colorResource(id = R.color.blue))
+            .wrapContentSize(Alignment.Center)
+    ) {
+        Text(
+            text = "Add Post Screen",
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            textAlign = TextAlign.Center,
+            fontSize = 20.sp
+        )
+    }
+}
+
+@Composable
+fun NavigationGraph(navController: NavHostController, modifier: Modifier) {
+    NavHost(navController, startDestination = BottomNavItem.Home.screenRoute) {
+        composable(BottomNavItem.Home.screenRoute) {
+            HomeScreen()
+        }
+        composable(BottomNavItem.Device.screenRoute) {
+            DeviceScreen()
+        }
+        composable(BottomNavItem.Account.screenRoute) {
+            AccountScreen()
+        }
+    }
+}
+
+@Composable
+fun BottomNavigation(navController: NavController) {
+    val items = listOf(
+        BottomNavItem.Home,
+        BottomNavItem.Device,
+        BottomNavItem.Account,
+    )
+    BottomNavigation(
+        backgroundColor = Color.White,
+        contentColor = Color.Black
+    ) {
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = navBackStackEntry?.destination?.route
+        items.forEach { item ->
+            BottomNavigationItem(
+                icon = { Icon(painterResource(id = item.icon), contentDescription = item.screenTitle) },
+                label = { Text(text = item.screenTitle, fontSize = 9.sp) },
+                selectedContentColor = Color.Blue.copy(0.7f),
+                unselectedContentColor = Color.Black.copy(0.7f),
+                alwaysShowLabel = true,
+                selected = currentRoute == item.screenRoute,
+                onClick = {
+                    navController.navigate(item.screenRoute) {
+                        navController.graph.startDestinationRoute?.let { screen_route ->
+                            popUpTo(screen_route) {
+                                saveState = true
+                            }
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
+        }
+    }
+}
 
 
 @Composable
@@ -231,105 +492,100 @@ fun DeviceIdTextField(defaultRespeckId: String, defaultThingyId: String) {
             .height(IntrinsicSize.Min),
         elevation = 10.dp,
     ) {
-        Column (Modifier.height(IntrinsicSize.Min)) {
+        Column {
             val context = LocalContext.current
             val localFocusManager = LocalFocusManager.current
-//            val scope = rememberCoroutineScope()
+            val scope = rememberCoroutineScope()
 
-            var respeckId by remember { mutableStateOf(TextFieldValue(defaultRespeckId)) }
-            OutlinedTextField(value = respeckId,
-                modifier = Modifier
-                    .padding(8.dp)
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                label = { Text(text = "Respeck ID") },
-                placeholder = { Text(text = "Respeck ID") },
-                onValueChange = {
-                    respeckId = it
-                },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(
-                    onNext = { localFocusManager.moveFocus(FocusDirection.Down) }
-                )
-            )
-
-//            Text(text = respeckId.text,
-//                modifier = Modifier.align(alignment = Alignment.CenterHorizontally))
-
-            var thingyId by remember { mutableStateOf(TextFieldValue(defaultThingyId)) }
-            OutlinedTextField(value = thingyId,
-                modifier = Modifier
-                    .padding(8.dp)
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                label = { Text(text = "Thingy ID") },
-                placeholder = { Text(text = "Thingy ID") },
-                onValueChange = {
-                    thingyId = it
-                },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = { localFocusManager.clearFocus() }
-                )
-            )
-
-//            Text(text = thingyId.text,
-//                modifier = Modifier.align(alignment = Alignment.CenterHorizontally))
-
-//            val userNameKey = stringPreferencesKey("sound")
-//            val userName = flow {
-//                context.dataStore.data.map {
-//                    it[userNameKey]
-//                }.collect(collector = {
-//                    if (it != null) {
-//                        this.emit(it)
-//                    }
-//                })
-//            }.collectAsState(initial = "")
-//
-//            OutlinedButton(
-//                modifier = Modifier
-//                    .padding(8.dp)
-//                    .fillMaxWidth()
-//                    .height(IntrinsicSize.Min),
-//                onClick = {
-//                    scope.launch {
-//                        setSoundAsTrue(context, respeckId.text)
-//                    }
-//                }
-//            ) {
-//                Text("Save")
-//            }
-//
-//            OutlinedButton(
-//                modifier = Modifier
-//                    .padding(8.dp)
-//                    .fillMaxWidth()
-//                    .height(IntrinsicSize.Min),
-//                onClick = {
-//                    Toast.makeText(context, userName.value, Toast.LENGTH_SHORT).show()
-//                }
-//            ) {
-//                Text("Read")
-//            }
-
-            OutlinedButton(
-                modifier = Modifier
-                    .padding(8.dp)
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                onClick = {
-                    context.startActivity(Intent(context, ConnectingActivity::class.java))
+            val respeckOn = flow {
+                context.deviceDataStore.data.map {
+                    it[booleanPreferencesKey("respeckOn")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
                 }
+            }.collectAsState(initial = false).value
+
+            val thingyOn = flow {
+                context.deviceDataStore.data.map {
+                    it[booleanPreferencesKey("thingyOn")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = false).value
+
+            val animationDuration = 2000
+
+            AnimatedVisibility(
+                visible = !(thingyOn && respeckOn),
+                enter = fadeIn(animationSpec = tween(durationMillis = animationDuration)),
+                exit = fadeOut(animationSpec = tween(durationMillis = animationDuration))
             ) {
-                Text("Pair")
+                Column (Modifier.height(IntrinsicSize.Min)) {
+                    var respeckId by remember { mutableStateOf(TextFieldValue(defaultRespeckId)) }
+                    OutlinedTextField(value = respeckId,
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min),
+                        label = { Text(text = "Respeck ID") },
+                        placeholder = { Text(text = "Respeck ID") },
+                        onValueChange = {
+                            respeckId = it
+                            scope.launch {
+                                setRespeckId(context, it.text)
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { localFocusManager.moveFocus(FocusDirection.Down) }
+                        )
+                    )
+
+                    var thingyId by remember { mutableStateOf(TextFieldValue(defaultThingyId)) }
+                    OutlinedTextField(value = thingyId,
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min),
+                        label = { Text(text = "Thingy ID") },
+                        placeholder = { Text(text = "Thingy ID") },
+                        onValueChange = {
+                            thingyId = it
+                            scope.launch {
+                                setThingyId(context, it.text)
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = { localFocusManager.clearFocus() }
+                        )
+                    )
+
+                    OutlinedButton(
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min),
+                        onClick = {
+                            context.startActivity(Intent(context, ConnectingActivity::class.java))
+                        }
+                    ) {
+                        Text("Pair")
+                    }
+                }
             }
+
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
 
             DeviceLiveDataView()
         }
@@ -342,7 +598,7 @@ fun DeviceLiveDataView() {
         val context = LocalContext.current
 
         val respeckAccX = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("respeckAccX")]
             }.collect(collector = {
                 if (it != null) {
@@ -351,7 +607,7 @@ fun DeviceLiveDataView() {
             })
         }.collectAsState(initial = "0")
         val respeckAccY = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("respeckAccY")]
             }.collect(collector = {
                 if (it != null) {
@@ -360,7 +616,7 @@ fun DeviceLiveDataView() {
             })
         }.collectAsState(initial = "0")
         val respeckAccZ = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("respeckAccZ")]
             }.collect(collector = {
                 if (it != null) {
@@ -370,7 +626,7 @@ fun DeviceLiveDataView() {
         }.collectAsState(initial = "0")
 
         val respeckGyrX = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("respeckGyrX")]
             }.collect(collector = {
                 if (it != null) {
@@ -379,7 +635,7 @@ fun DeviceLiveDataView() {
             })
         }.collectAsState(initial = "0")
         val respeckGyrY = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("respeckGyrY")]
             }.collect(collector = {
                 if (it != null) {
@@ -388,7 +644,7 @@ fun DeviceLiveDataView() {
             })
         }.collectAsState(initial = "0")
         val respeckGyrZ = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("respeckGyrZ")]
             }.collect(collector = {
                 if (it != null) {
@@ -398,7 +654,7 @@ fun DeviceLiveDataView() {
         }.collectAsState(initial = "0")
 
         val thingyAccX = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("thingyAccX")]
             }.collect(collector = {
                 if (it != null) {
@@ -407,7 +663,7 @@ fun DeviceLiveDataView() {
             })
         }.collectAsState(initial = "0")
         val thingyAccY = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("thingyAccY")]
             }.collect(collector = {
                 if (it != null) {
@@ -416,7 +672,7 @@ fun DeviceLiveDataView() {
             })
         }.collectAsState(initial = "0")
         val thingyAccZ = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("thingyAccZ")]
             }.collect(collector = {
                 if (it != null) {
@@ -426,7 +682,7 @@ fun DeviceLiveDataView() {
         }.collectAsState(initial = "0")
 
         val thingyGyrX = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("thingyGyrX")]
             }.collect(collector = {
                 if (it != null) {
@@ -435,7 +691,7 @@ fun DeviceLiveDataView() {
             })
         }.collectAsState(initial = "0")
         val thingyGyrY = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("thingyGyrY")]
             }.collect(collector = {
                 if (it != null) {
@@ -444,7 +700,7 @@ fun DeviceLiveDataView() {
             })
         }.collectAsState(initial = "0")
         val thingyGyrZ = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("thingyGyrZ")]
             }.collect(collector = {
                 if (it != null) {
@@ -454,7 +710,7 @@ fun DeviceLiveDataView() {
         }.collectAsState(initial = "0")
 
         val thingyMagX = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("thingyMagX")]
             }.collect(collector = {
                 if (it != null) {
@@ -463,7 +719,7 @@ fun DeviceLiveDataView() {
             })
         }.collectAsState(initial = "0")
         val thingyMagY = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("thingyMagY")]
             }.collect(collector = {
                 if (it != null) {
@@ -472,7 +728,7 @@ fun DeviceLiveDataView() {
             })
         }.collectAsState(initial = "0")
         val thingyMagZ = flow {
-            context.dataStore.data.map {
+            context.deviceDataStore.data.map {
                 it[stringPreferencesKey("thingyMagZ")]
             }.collect(collector = {
                 if (it != null) {
@@ -491,10 +747,24 @@ fun DeviceLiveDataView() {
     }
 }
 
-suspend fun setSoundAsTrue(context: Context, value: String) {
-    val userNameKey = stringPreferencesKey("sound")
-    context.dataStore.edit {
-        it[userNameKey] = value
+suspend fun setRespeckId(context: Context, respeckId: String) {
+    val respeckIdKey = stringPreferencesKey("respeckId")
+    context.deviceDataStore.edit {
+        it[respeckIdKey] = respeckId
+    }
+}
+
+suspend fun setRespeckOn(context: Context) {
+    val respeckOnKey = booleanPreferencesKey("respeckOn")
+    context.deviceDataStore.edit {
+        it[respeckOnKey] = true
+    }
+}
+
+suspend fun setRespeckOff(context: Context) {
+    val respeckOnKey = booleanPreferencesKey("respeckOn")
+    context.deviceDataStore.edit {
+        it[respeckOnKey] = false
     }
 }
 
@@ -502,7 +772,7 @@ suspend fun setRespeckAcc(context: Context, accX: String, accY: String, accZ: St
     val respeckAccXKey = stringPreferencesKey("respeckAccX")
     val respeckAccYKey = stringPreferencesKey("respeckAccY")
     val respeckAccZKey = stringPreferencesKey("respeckAccZ")
-    context.dataStore.edit {
+    context.deviceDataStore.edit {
         it[respeckAccXKey] = accX
         it[respeckAccYKey] = accY
         it[respeckAccZKey] = accZ
@@ -513,10 +783,31 @@ suspend fun setRespeckGyr(context: Context, gyrX: String, gyrY: String, gyrZ: St
     val respeckGyrXKey = stringPreferencesKey("respeckGyrX")
     val respeckGyrYKey = stringPreferencesKey("respeckGyrY")
     val respeckGyrZKey = stringPreferencesKey("respeckGyrZ")
-    context.dataStore.edit {
+    context.deviceDataStore.edit {
         it[respeckGyrXKey] = gyrX
         it[respeckGyrYKey] = gyrY
         it[respeckGyrZKey] = gyrZ
+    }
+}
+
+suspend fun setThingyId(context: Context, thingyId: String) {
+    val thingyIdKey = stringPreferencesKey("thingyId")
+    context.deviceDataStore.edit {
+        it[thingyIdKey] = thingyId
+    }
+}
+
+suspend fun setThingyOn(context: Context) {
+    val thingyOnKey = booleanPreferencesKey("thingyOn")
+    context.deviceDataStore.edit {
+        it[thingyOnKey] = true
+    }
+}
+
+suspend fun setThingyOff(context: Context) {
+    val thingyOnKey = booleanPreferencesKey("thingyOn")
+    context.deviceDataStore.edit {
+        it[thingyOnKey] = false
     }
 }
 
@@ -524,7 +815,7 @@ suspend fun setThingyAcc(context: Context, accX: String, accY: String, accZ: Str
     val thingyAccXKey = stringPreferencesKey("thingyAccX")
     val thingyAccYKey = stringPreferencesKey("thingyAccY")
     val thingyAccZKey = stringPreferencesKey("thingyAccZ")
-    context.dataStore.edit {
+    context.deviceDataStore.edit {
         it[thingyAccXKey] = accX
         it[thingyAccYKey] = accY
         it[thingyAccZKey] = accZ
@@ -535,7 +826,7 @@ suspend fun setThingyGyr(context: Context, gyrX: String, gyrY: String, gyrZ: Str
     val thingyGyrXKey = stringPreferencesKey("thingyGyrX")
     val thingyGyrYKey = stringPreferencesKey("thingyGyrY")
     val thingyGyrZKey = stringPreferencesKey("thingyGyrZ")
-    context.dataStore.edit {
+    context.deviceDataStore.edit {
         it[thingyGyrXKey] = gyrX
         it[thingyGyrYKey] = gyrY
         it[thingyGyrZKey] = gyrZ
@@ -546,10 +837,17 @@ suspend fun setThingyMag(context: Context, magX: String, magY: String, magZ: Str
     val thingyMagXKey = stringPreferencesKey("thingyMagX")
     val thingyMagYKey = stringPreferencesKey("thingyMagY")
     val thingyMagZKey = stringPreferencesKey("thingyMagZ")
-    context.dataStore.edit {
+    context.deviceDataStore.edit {
         it[thingyMagXKey] = magX
         it[thingyMagYKey] = magY
         it[thingyMagZKey] = magZ
+    }
+}
+
+suspend fun setPairState(context: Context, pairState: Boolean) {
+    val pairStateKey = booleanPreferencesKey("pairState")
+    context.deviceDataStore.edit {
+        it[pairStateKey] = pairState
     }
 }
 
@@ -557,5 +855,5 @@ suspend fun setThingyMag(context: Context, magX: String, magY: String, magZ: Str
 @Preview
 @Composable
 fun DefaultPreview() {
-    DeviceIdTextField("", "")
+    DeviceIdTextField("E7:6E:9C:24:55:9A", "DF:80:AA:B3:5A:F7")
 }
