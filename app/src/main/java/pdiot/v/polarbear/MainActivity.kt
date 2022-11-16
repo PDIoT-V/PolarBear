@@ -12,7 +12,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,18 +29,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.InternalTextApi
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.core.DataStore
@@ -51,8 +57,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import pdiot.v.polarbear.bluetooth.BluetoothSpeckService
 import pdiot.v.polarbear.bluetooth.ConnectingActivity
@@ -62,14 +76,6 @@ import pdiot.v.polarbear.utils.RESpeckLiveData
 import pdiot.v.polarbear.utils.ThingyLiveData
 import pdiot.v.polarbear.utils.Utils
 import kotlin.system.exitProcess
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.onEach
 
 val Context.deviceDataStore: DataStore<Preferences> by preferencesDataStore(name = "deviceSettings")
 
@@ -338,6 +344,8 @@ fun HomeScreen(mainViewModel: CountViewModel = viewModel()) {
                     ActionInfo(13, "General movement", R.drawable.movement),
                 ))
             }
+
+
             LazyColumn {
                 items(actionList.slice(0..4), key = {it.id}) {
                     Row(
@@ -349,9 +357,9 @@ fun HomeScreen(mainViewModel: CountViewModel = viewModel()) {
                                     .slice(0..4)
                             }
                             .animateItemPlacement()
-                            .padding(16.dp)) {
+                            .padding(16.dp, 16.dp, 16.dp, 16.dp)) {
                         Icon(painterResource(id = it.icon), it.name)
-                        Column {
+                        Column (modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 0.dp)) {
                             val actionCategory = if (it.id in listOf(0, 1, 2, 3)) { "sitting" }
                             else { if (it.id == 4) { "standing" }
                             else { if (it.id in listOf(5, 6, 7, 8)) { "lying" }
@@ -383,6 +391,152 @@ fun HomeScreen(mainViewModel: CountViewModel = viewModel()) {
                 textAlign = TextAlign.Center
             )
         }
+
+        Column (
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Top,
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressbar3()
+        }
+    }
+}
+
+@Composable
+fun CircularProgressbar3(
+    number: Float = 70f,
+    numberStyle: TextStyle = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Bold,
+        fontSize = 28.sp
+    ),
+    size: Dp = 180.dp,
+    innerSize: Dp = 120.dp,
+    indicatorThickness: Dp = 28.dp,
+    animationDuration: Int = 1000,
+    animationDelay: Int = 0,
+    foregroundIndicatorColor: Color = Color(0xFF35898f),
+    innerForegroundIndicatorColor: Color = Color.Blue.copy(0.8f),
+    backgroundIndicatorColor: Color = Color.LightGray.copy(alpha = 0.3f)
+) {
+
+    // It remembers the number value
+    var numberR by remember {
+        mutableStateOf(0f)
+    }
+
+    // It remembers the number value
+    var innerNumberR by remember {
+        mutableStateOf(0f)
+    }
+
+    // Number Animation
+    val animateNumber = animateFloatAsState(
+        targetValue = numberR,
+        animationSpec = tween(
+            durationMillis = animationDuration,
+            delayMillis = animationDelay
+        )
+    )
+
+    // Number Animation
+    val innerAnimateNumber = animateFloatAsState(
+        targetValue = innerNumberR,
+        animationSpec = tween(
+            durationMillis = animationDuration,
+            delayMillis = animationDelay
+        )
+    )
+
+    // This is to start the animation when the activity is opened
+    LaunchedEffect(Unit) {
+        numberR = number
+        innerNumberR = number
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(size = size)
+    ) {
+        Canvas(
+            modifier = Modifier
+                .size(size = size)
+        ) {
+            // Background circle
+            drawCircle(
+                color = backgroundIndicatorColor,
+                radius = size.toPx() / 2,
+                style = Stroke(width = indicatorThickness.toPx(), cap = StrokeCap.Round)
+            )
+
+            val sweepAngle = (animateNumber.value / 100) * 360
+
+            // Foreground circle
+            drawArc(
+                color = foregroundIndicatorColor,
+                startAngle = -90f,
+                sweepAngle = sweepAngle,
+                useCenter = false,
+                style = Stroke(indicatorThickness.toPx(), cap = StrokeCap.Round)
+            )
+        }
+
+        // Text that shows number inside the circle
+        Text(
+            text = (animateNumber.value).toInt().toString(),
+            style = numberStyle
+        )
+
+        Canvas(
+            modifier = Modifier
+                .size(size = innerSize)
+        ) {
+            // Background circle
+            drawCircle(
+                color = backgroundIndicatorColor,
+                radius = innerSize.toPx() / 2,
+                style = Stroke(width = indicatorThickness.toPx(), cap = StrokeCap.Round)
+            )
+
+            val sweepAngle = (innerAnimateNumber.value / 100) * 360
+
+            // Foreground circle
+            drawArc(
+                color = innerForegroundIndicatorColor,
+                startAngle = -90f,
+                sweepAngle = sweepAngle,
+                useCenter = false,
+                style = Stroke(indicatorThickness.toPx(), cap = StrokeCap.Round)
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    ButtonProgressbar {
+        numberR = (1..100).random().toFloat()
+        innerNumberR = (1..100).random().toFloat()
+    }
+}
+
+@Composable
+private fun ButtonProgressbar(
+    backgroundColor: Color = Color(0xFF35898f),
+    onClickButton: () -> Unit
+) {
+    Button(
+        onClick = {
+            onClickButton()
+        },
+        colors = ButtonDefaults.buttonColors(
+            backgroundColor = backgroundColor
+        )
+    ) {
+        Text(
+            text = "Random",
+            color = Color.White,
+            fontSize = 16.sp
+        )
     }
 }
 
@@ -414,7 +568,7 @@ class CountViewModel : ViewModel() {
 
 @Composable
 fun DeviceScreen() {
-    DeviceIdTextField("", "")
+    DeviceIdTextField("E7:6E:9C:24:55:9A", "DF:80:AA:B3:5A:F7")
 }
 
 @Composable
