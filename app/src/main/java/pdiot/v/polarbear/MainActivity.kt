@@ -388,10 +388,16 @@ fun HomeScreen(mainViewModel: CountViewModel = viewModel()) {
 
 
 @ExperimentalAnimationApi
-fun addAnimation(duration: Int = 300): ContentTransform {
-    return slideInVertically(animationSpec = tween(durationMillis = duration)) { height -> height } + fadeIn(
+fun addAnimation(duration: Int = 1000): ContentTransform {
+//    return slideInVertically(animationSpec = tween(durationMillis = duration)) { height -> height } + fadeIn(
+//        animationSpec = tween(durationMillis = duration)
+//    ) with slideOutVertically(animationSpec = tween(durationMillis = duration)) { height -> -height } + fadeOut(
+//        animationSpec = tween(durationMillis = duration)
+//    )
+
+    return expandVertically(animationSpec = tween(durationMillis = duration)) { height -> height } + fadeIn(
         animationSpec = tween(durationMillis = duration)
-    ) with slideOutVertically(animationSpec = tween(durationMillis = duration)) { height -> -height } + fadeOut(
+    ) with shrinkVertically(animationSpec = tween(durationMillis = duration)) { height -> -height } + fadeOut(
         animationSpec = tween(durationMillis = duration)
     )
 }
