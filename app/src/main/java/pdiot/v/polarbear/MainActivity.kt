@@ -568,7 +568,40 @@ class CountViewModel : ViewModel() {
 
 @Composable
 fun DeviceScreen() {
-    DeviceIdTextField("E7:6E:9C:24:55:9A", "DF:80:AA:B3:5A:F7")
+//    DeviceIdTextField("E7:6E:9C:24:55:9A", "DF:80:AA:B3:5A:F7")
+    Column (
+        modifier = Modifier
+        .fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        val cardEvaluation = 5.dp
+
+        Card (
+            Modifier
+            .fillMaxWidth()
+            .padding(20.dp)
+            .height(IntrinsicSize.Min),
+            elevation = cardEvaluation
+        ) {
+            Column {
+                RespeckTextField()
+                RespeckLiveMatrix()
+            }
+        }
+
+        Card (
+            Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+                .height(IntrinsicSize.Min),
+            elevation = cardEvaluation
+        ) {
+            Column {
+                ThingyTextField()
+                ThingyLiveMatrix()
+            }
+        }
+    }
 }
 
 @Composable
@@ -749,6 +782,286 @@ fun DeviceIdTextField(defaultRespeckId: String, defaultThingyId: String) {
 
             DeviceLiveDataView()
         }
+    }
+}
+
+@Composable
+fun RespeckTextField() {
+    val context = LocalContext.current
+    val localFocusManager = LocalFocusManager.current
+    val scope = rememberCoroutineScope()
+
+    val respeckOn = flow {
+        context.deviceDataStore.data.map {
+            it[booleanPreferencesKey("respeckOn")]
+        }.collect {
+            if (it != null) {
+                this.emit(it)
+            }
+        }
+    }.collectAsState(initial = false).value
+
+    val respeckIdDefault = flow {
+        context.deviceDataStore.data.map {
+            it[stringPreferencesKey("respeckId")]
+        }.collect {
+            if (it != null) {
+                this.emit(it)
+            }
+        }
+    }.collectAsState(initial = "").value
+
+    var respeckId by remember { mutableStateOf(TextFieldValue(respeckIdDefault)) }
+    OutlinedTextField(value = respeckId,
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
+        label = { Text(text = "Respeck ID") },
+        placeholder = { Text(text = "Respeck ID") },
+        onValueChange = {
+            respeckId = it
+            scope.launch {
+                setRespeckId(context, it.text)
+            }
+        },
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Text,
+            imeAction = ImeAction.Next
+        ),
+        keyboardActions = KeyboardActions(
+            onNext = { localFocusManager.moveFocus(FocusDirection.Down) }
+        )
+    )
+}
+
+@Composable
+fun ThingyTextField() {
+    val context = LocalContext.current
+    val localFocusManager = LocalFocusManager.current
+    val scope = rememberCoroutineScope()
+
+    val thingyOn = flow {
+        context.deviceDataStore.data.map {
+            it[booleanPreferencesKey("thingyOn")]
+        }.collect {
+            if (it != null) {
+                this.emit(it)
+            }
+        }
+    }.collectAsState(initial = false).value
+
+    val thingyIdDefault = flow {
+        context.deviceDataStore.data.map {
+            it[stringPreferencesKey("thingyId")]
+        }.collect {
+            if (it != null) {
+                this.emit(it)
+            }
+        }
+    }.collectAsState(initial = "").value
+
+    var thingyId by remember { mutableStateOf(TextFieldValue(thingyIdDefault)) }
+    OutlinedTextField(value = thingyId,
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
+        label = { Text(text = "Thingy ID") },
+        placeholder = { Text(text = "Thingy ID") },
+        onValueChange = {
+            thingyId = it
+            scope.launch {
+                setThingyId(context, it.text)
+            }
+        },
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Text,
+            imeAction = ImeAction.Done
+        ),
+        keyboardActions = KeyboardActions(
+            onDone = {
+                localFocusManager.clearFocus()
+                scope.launch {
+                    setThingyId(context, thingyId.text)
+                }
+            }
+        )
+    )
+}
+
+@Composable
+fun RespeckLiveMatrix() {
+    Column {
+        val context = LocalContext.current
+
+        val respeckAccX = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("respeckAccX")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+        val respeckAccY = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("respeckAccY")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+        val respeckAccZ = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("respeckAccZ")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+
+        val respeckGyrX = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("respeckGyrX")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+        val respeckGyrY = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("respeckGyrY")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+        val respeckGyrZ = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("respeckGyrZ")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+
+        Text(text = "Respeck")
+        Text(text = "[${respeckAccX.value}, ${respeckAccY.value}, ${respeckAccZ.value}]")
+        Text(text = "[${respeckGyrX.value}, ${respeckGyrY.value}, ${respeckGyrZ.value}]")
+    }
+}
+
+@Composable
+fun ThingyLiveMatrix() {
+    Column {
+        val context = LocalContext.current
+
+        val thingyId = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyId")]
+            }.collect {
+                if (it != null) {
+                    this.emit(it)
+                }
+            }
+        }.collectAsState(initial = "")
+
+        val thingyAccX = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyAccX")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+        val thingyAccY = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyAccY")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+        val thingyAccZ = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyAccZ")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+
+        val thingyGyrX = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyGyrX")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+        val thingyGyrY = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyGyrY")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+        val thingyGyrZ = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyGyrZ")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+
+        val thingyMagX = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyMagX")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+        val thingyMagY = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyMagY")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+        val thingyMagZ = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyMagZ")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = "0")
+
+
+
+        Text(text = thingyId.value)
+        Text(text = "[${thingyAccX.value}, ${thingyAccY.value}, ${thingyAccZ.value}]")
+        Text(text = "[${thingyGyrX.value}, ${thingyGyrY.value}, ${thingyGyrZ.value}]")
+        Text(text = "[${thingyMagX.value}, ${thingyMagY.value}, ${thingyMagZ.value}]")
     }
 }
 
