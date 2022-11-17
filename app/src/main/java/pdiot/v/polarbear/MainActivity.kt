@@ -11,13 +11,11 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,8 +27,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.colorResource
@@ -47,6 +47,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -76,6 +78,14 @@ import pdiot.v.polarbear.utils.RESpeckLiveData
 import pdiot.v.polarbear.utils.ThingyLiveData
 import pdiot.v.polarbear.utils.Utils
 import kotlin.system.exitProcess
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
+import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSButtonState
+import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSButtonType
+import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSJetPackComposeProgressButton
 
 val Context.deviceDataStore: DataStore<Preferences> by preferencesDataStore(name = "deviceSettings")
 
@@ -261,16 +271,17 @@ class MainActivity : ComponentActivity() {
 fun MainScreen() {
     val navController = rememberNavController ()
     Scaffold (
+        topBar = {  },
         floatingActionButtonPosition = FabPosition.End,
-        floatingActionButton = { PairingButton() },
+        floatingActionButton = { FloatingPairingButton() },
         bottomBar = { BottomNavigation (navController = navController) }
     ) { paddingValues ->
-        NavigationGraph (navController = navController, modifier = Modifier.padding(paddingValues))
+        NavigationGraph (navController = navController, innerPadding = paddingValues)
     }
 }
 
 @Composable
-fun PairingButton() {
+fun FloatingPairingButton() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -295,7 +306,8 @@ fun PairingButton() {
                     setPairState(context, true)
                 }
             }
-        }){
+        }
+    ){
         Icon(painterResource(id = if (pairState) {
             R.drawable.bluetooth_connected
         } else {
@@ -318,10 +330,15 @@ sealed class BottomNavItem(var screenTitle: String, var icon: Int, var screenRou
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalAnimationApi::class)
 @Composable
-fun HomeScreen(mainViewModel: CountViewModel = viewModel()) {
+fun HomeScreen(innerPadding: PaddingValues) {
+    val mainViewModel: CountViewModel = viewModel()
     val seconds by mainViewModel.seconds.collectAsState(initial = "00")
 
-    Column {
+    Column (
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
+            ) {
         Card (
             modifier = Modifier
                 .fillMaxWidth()
@@ -567,50 +584,78 @@ class CountViewModel : ViewModel() {
 }
 
 @Composable
-fun DeviceScreen() {
+fun DeviceScreen(innerPadding: PaddingValues) {
 //    DeviceIdTextField("E7:6E:9C:24:55:9A", "DF:80:AA:B3:5A:F7")
     Column (
         modifier = Modifier
-        .fillMaxSize(),
+            .fillMaxSize()
+            .background(Color.Gray)
+            .padding(innerPadding),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        val cardEvaluation = 5.dp
+        Spacer(modifier = Modifier.width(32.dp))
 
-        Card (
-            Modifier
-            .fillMaxWidth()
-            .padding(20.dp)
-            .height(IntrinsicSize.Min),
-            elevation = cardEvaluation
+        ConstraintLayout (
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .systemBarsPadding()
         ) {
-            Column {
-                RespeckTextField()
-                RespeckLiveMatrix()
+            val (respeckCard, thingyCard) = createRefs()
+            val cardEvaluation = 5.dp
+
+            Card (
+                modifier = Modifier
+                    .constrainAs(respeckCard) { top.linkTo(parent.top, margin = 0.dp) }
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .height(IntrinsicSize.Min)
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .systemBarsPadding(),
+                elevation = cardEvaluation
+            ) {
+                Column {
+                    RespeckTextField()
+                    RespeckLiveMatrix()
+                }
+            }
+
+            Card (
+                Modifier
+                    .constrainAs(thingyCard) { bottom.linkTo(parent.bottom, margin = 0.dp) }
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .height(IntrinsicSize.Min)
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .systemBarsPadding(),
+                elevation = cardEvaluation
+            ) {
+                Column (
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    ThingyTextField()
+                    ThingyPairingButton()
+                    ThingyLiveMatrix()
+                    ThingyLiveChart()
+                }
             }
         }
 
-        Card (
-            Modifier
-                .fillMaxWidth()
-                .padding(20.dp)
-                .height(IntrinsicSize.Min),
-            elevation = cardEvaluation
-        ) {
-            Column {
-                ThingyTextField()
-                ThingyLiveMatrix()
-            }
-        }
+        Spacer(modifier = Modifier.width(32.dp))
     }
 }
 
 @Composable
-fun AccountScreen() {
+fun AccountScreen(innerPadding: PaddingValues) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(colorResource(id = R.color.blue))
             .wrapContentSize(Alignment.Center)
+            .padding(innerPadding)
     ) {
         Text(
             text = "Add Post Screen",
@@ -624,16 +669,16 @@ fun AccountScreen() {
 }
 
 @Composable
-fun NavigationGraph(navController: NavHostController, modifier: Modifier) {
+fun NavigationGraph(navController: NavHostController, innerPadding: PaddingValues) {
     NavHost(navController, startDestination = BottomNavItem.Home.screenRoute) {
         composable(BottomNavItem.Home.screenRoute) {
-            HomeScreen()
+            HomeScreen(innerPadding = innerPadding)
         }
         composable(BottomNavItem.Device.screenRoute) {
-            DeviceScreen()
+            DeviceScreen(innerPadding)
         }
         composable(BottomNavItem.Account.screenRoute) {
-            AccountScreen()
+            AccountScreen(innerPadding)
         }
     }
 }
@@ -788,8 +833,6 @@ fun DeviceIdTextField(defaultRespeckId: String, defaultThingyId: String) {
 @Composable
 fun RespeckTextField() {
     val context = LocalContext.current
-    val localFocusManager = LocalFocusManager.current
-    val scope = rememberCoroutineScope()
 
     val respeckOn = flow {
         context.deviceDataStore.data.map {
@@ -801,45 +844,103 @@ fun RespeckTextField() {
         }
     }.collectAsState(initial = false).value
 
-    val respeckIdDefault = flow {
-        context.deviceDataStore.data.map {
-            it[stringPreferencesKey("respeckId")]
-        }.collect {
-            if (it != null) {
-                this.emit(it)
+    AnimatedVisibility(visible = !respeckOn) {
+        Column {
+            val localFocusManager = LocalFocusManager.current
+            val scope = rememberCoroutineScope()
+
+            val respeckIdDefault = flow {
+                context.deviceDataStore.data.map {
+                    it[stringPreferencesKey("respeckId")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = "").value
+
+            var showNoticeMsg by remember {
+                mutableStateOf(false)
+            }
+
+            var showDoneIcon by remember {
+                mutableStateOf(false)
+            }
+
+            var respeckId by remember { mutableStateOf(TextFieldValue(respeckIdDefault)) }
+            OutlinedTextField(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+                value = respeckId,
+                label = { Text(text = if (respeckOn) { "$respeckIdDefault" } else { "Respeck ID" }) },
+                placeholder = { Text(text = respeckIdDefault.ifEmpty { "Respeck ID" }) },
+                onValueChange = {
+                    respeckId = it
+                    showDoneIcon = true
+                },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = {
+                        if (respeckId.text.isNotEmpty()) {
+                            if (respeckId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                                scope.launch {
+                                    setRespeckId(context, respeckId.text)
+                                }
+                            }
+                        }
+                        localFocusManager.moveFocus(FocusDirection.Down)
+                    }
+                ),
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.device),
+                        contentDescription = null
+                    ) },
+                trailingIcon = {
+                    if (respeckId.text.isNotEmpty()) {
+                        if (respeckId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                            if (showDoneIcon) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.done),
+                                    contentDescription = null,
+                                    modifier = Modifier.clickable {
+                                        scope.launch {
+                                            setRespeckId(context, respeckId.text)
+                                        }
+                                        localFocusManager.moveFocus(FocusDirection.Down)
+                                        showDoneIcon = false
+                                    },
+                                    tint = Color.Green
+                                )
+                            }
+
+                        } else {
+                            Icon(
+                                painter = painterResource(id = R.drawable.error),
+                                contentDescription = null,
+                                modifier = Modifier.clickable {
+                                    showNoticeMsg = true
+                                },
+                                tint = Color.Red
+                            )
+                        }
+                    }}
+            )
+            AnimatedVisibility(visible = showNoticeMsg) {
+                Text(text = "Invalid Respeck ID.", color = Color.Red)
             }
         }
-    }.collectAsState(initial = "").value
-
-    var respeckId by remember { mutableStateOf(TextFieldValue(respeckIdDefault)) }
-    OutlinedTextField(value = respeckId,
-        modifier = Modifier
-            .padding(8.dp)
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min),
-        label = { Text(text = "Respeck ID") },
-        placeholder = { Text(text = "Respeck ID") },
-        onValueChange = {
-            respeckId = it
-            scope.launch {
-                setRespeckId(context, it.text)
-            }
-        },
-        keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Text,
-            imeAction = ImeAction.Next
-        ),
-        keyboardActions = KeyboardActions(
-            onNext = { localFocusManager.moveFocus(FocusDirection.Down) }
-        )
-    )
+    }
 }
 
 @Composable
 fun ThingyTextField() {
     val context = LocalContext.current
-    val localFocusManager = LocalFocusManager.current
-    val scope = rememberCoroutineScope()
 
     val thingyOn = flow {
         context.deviceDataStore.data.map {
@@ -851,49 +952,168 @@ fun ThingyTextField() {
         }
     }.collectAsState(initial = false).value
 
-    val thingyIdDefault = flow {
-        context.deviceDataStore.data.map {
-            it[stringPreferencesKey("thingyId")]
-        }.collect {
-            if (it != null) {
-                this.emit(it)
+    AnimatedVisibility(visible = true) {
+        Column {
+            val localFocusManager = LocalFocusManager.current
+            val scope = rememberCoroutineScope()
+
+            val thingyIdDefault = flow {
+                context.deviceDataStore.data.map {
+                    it[stringPreferencesKey("thingyId")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = "").value
+
+            var showNoticeMsg by remember {
+                mutableStateOf(false)
+            }
+
+            var showDoneIcon by remember {
+                mutableStateOf(false)
+            }
+
+            var thingyId by remember { mutableStateOf(TextFieldValue(thingyIdDefault)) }
+            OutlinedTextField(
+                value = thingyId,
+                modifier = Modifier
+                    .padding(8.dp)
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+                label = { Text(text = if (thingyOn) { "$thingyIdDefault" } else { "Thingy ID" }) },
+                placeholder = { Text(text = thingyIdDefault.ifEmpty { "Thingy ID" }) },
+                enabled = !thingyOn,
+                onValueChange = {
+                    thingyId = it
+                    if (thingyId.text.isNotEmpty()) {
+                        if (thingyId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                            showDoneIcon = true
+                        }
+                        else {
+                            showNoticeMsg = true
+                        }
+                    }
+                },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (thingyId.text.isNotEmpty()) {
+                            if (thingyId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                                scope.launch {
+                                    setThingyId(context, thingyId.text)
+                                }
+                            }
+                        }
+                        localFocusManager.clearFocus()
+                    }
+                ),
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.device),
+                        contentDescription = null
+                    ) },
+                trailingIcon = {
+                    if (thingyId.text.isNotEmpty()) {
+                        if (thingyId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                            if (showDoneIcon) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.done),
+                                    contentDescription = null,
+                                    modifier = Modifier.clickable {
+                                        scope.launch {
+                                            setThingyId(context, thingyId.text)
+                                        }
+                                        localFocusManager.clearFocus()
+                                        showDoneIcon = false
+                                    },
+                                    tint = Color.Green
+                                )
+                            }
+
+                        } else {
+                            Icon(
+                                painter = painterResource(id = R.drawable.error),
+                                contentDescription = null,
+                                modifier = Modifier.clickable {
+                                    showNoticeMsg = true
+                                },
+                                tint = Color.Red
+                            )
+                        }
+                    }}
+            )
+
+            AnimatedVisibility(visible = showNoticeMsg) {
+                Text(text = "Invalid Thingy ID.", color = Color.Red)
             }
         }
-    }.collectAsState(initial = "").value
+    }
+}
 
-    var thingyId by remember { mutableStateOf(TextFieldValue(thingyIdDefault)) }
-    OutlinedTextField(value = thingyId,
-        modifier = Modifier
-            .padding(8.dp)
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min),
-        label = { Text(text = "Thingy ID") },
-        placeholder = { Text(text = "Thingy ID") },
-        onValueChange = {
-            thingyId = it
-            scope.launch {
-                setThingyId(context, it.text)
-            }
-        },
-        keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Text,
-            imeAction = ImeAction.Done
-        ),
-        keyboardActions = KeyboardActions(
-            onDone = {
-                localFocusManager.clearFocus()
-                scope.launch {
-                    setThingyId(context, thingyId.text)
-                }
+@Composable
+fun ThingyPairingButton() {
+    Row (horizontalArrangement = Arrangement.Center) {
+        var roundedProgressState2: SSButtonState by remember {
+            mutableStateOf(SSButtonState.IDLE)
+        }
+
+        SSJetPackComposeProgressButton(
+            assetColor = colorResource(id = R.color.blue),
+            colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
+            buttonBorderStroke = BorderStroke(0.dp,
+                SolidColor(colorResource(id = R.color.grey))),
+            type = SSButtonType.CIRCLE,
+            onClick = {
+                roundedProgressState2 =
+                    if (roundedProgressState2 == SSButtonState.IDLE) {
+                        SSButtonState.LOADING
+                    } else {
+                        if (roundedProgressState2 == SSButtonState.SUCCESS) {
+                            SSButtonState.IDLE
+                        } else {
+                            SSButtonState.IDLE
+                        }
+                    }
+
+
+            },
+            buttonState = roundedProgressState2,
+            width = 128.dp,
+            height = 48.dp,
+            padding = PaddingValues(12.dp),
+            cornerRadius = 64,
+            leftImagePainter = if (roundedProgressState2 != SSButtonState.SUCCESS) {
+                rememberDrawablePainter(drawable = AppCompatResources.getDrawable(
+                    LocalContext.current,
+                    R.drawable.sensor24))
+            } else {
+                rememberDrawablePainter(drawable = AppCompatResources.getDrawable(
+                    LocalContext.current,
+                    R.drawable.sensors_off24))
             }
         )
-    )
+    }
 }
 
 @Composable
 fun RespeckLiveMatrix() {
     Column {
         val context = LocalContext.current
+
+        val respeckId = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("respeckId")]
+            }.collect {
+                if (it != null) {
+                    this.emit(it)
+                }
+            }
+        }.collectAsState(initial = "")
 
         val respeckAccX = flow {
             context.deviceDataStore.data.map {
@@ -951,7 +1171,7 @@ fun RespeckLiveMatrix() {
             })
         }.collectAsState(initial = "0")
 
-        Text(text = "Respeck")
+        Text(text = respeckId.value)
         Text(text = "[${respeckAccX.value}, ${respeckAccY.value}, ${respeckAccZ.value}]")
         Text(text = "[${respeckGyrX.value}, ${respeckGyrY.value}, ${respeckGyrZ.value}]")
     }
@@ -1062,6 +1282,53 @@ fun ThingyLiveMatrix() {
         Text(text = "[${thingyAccX.value}, ${thingyAccY.value}, ${thingyAccZ.value}]")
         Text(text = "[${thingyGyrX.value}, ${thingyGyrY.value}, ${thingyGyrZ.value}]")
         Text(text = "[${thingyMagX.value}, ${thingyMagY.value}, ${thingyMagZ.value}]")
+    }
+}
+
+@Composable
+fun ThingyLiveChart() {
+    AndroidView(
+        factory = { ctx: Context ->
+            val lineChart = LineChart(ctx)
+
+            val lineEntry = ArrayList<Entry>();
+            lineEntry.add(Entry(20f , 0f))
+            lineEntry.add(Entry(50f , 1f))
+            lineEntry.add(Entry(70f , 2f))
+            lineEntry.add(Entry(10f , 3f))
+            lineEntry.add(Entry(30f , 4f))
+
+            val dataSet = LineDataSet(lineEntry, "Label").apply { color = Color.Red.toArgb() }
+
+            val lineData = LineData(dataSet)
+
+            lineChart.data = lineData
+            lineChart.invalidate()
+
+            lineChart
+//        .apply {
+//            val xValues = ArrayList<String>()
+//            xValues.add("13")
+//            xValues.add("6")
+//            xValues.add("17")
+//            xValues.add("5")
+//            xValues.add("8")
+//
+//            val lineEntry = ArrayList<Entry>();
+//            lineEntry.add(Entry(20f , 0f))
+//            lineEntry.add(Entry(50f , 1f))
+//            lineEntry.add(Entry(70f , 2f))
+//            lineEntry.add(Entry(10f , 3f))
+//            lineEntry.add(Entry(30f , 4f))
+//
+//            val lineDataSet = LineDataSet(lineEntry, "First")
+//
+//            ctx.data = LineData(lineDataSet)
+//        }
+    }) {
+        it.lineData.notifyDataChanged()
+        it.notifyDataSetChanged()
+        it.invalidate()
     }
 }
 
