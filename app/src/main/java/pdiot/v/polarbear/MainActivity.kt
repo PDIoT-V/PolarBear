@@ -26,11 +26,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.colorResource
@@ -64,6 +61,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
+import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
+import com.google.accompanist.drawablepainter.rememberDrawablePainter
+import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSButtonState
+import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSButtonType
+import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSJetPackComposeProgressButton
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flow
@@ -78,14 +84,7 @@ import pdiot.v.polarbear.utils.RESpeckLiveData
 import pdiot.v.polarbear.utils.ThingyLiveData
 import pdiot.v.polarbear.utils.Utils
 import kotlin.system.exitProcess
-import com.github.mikephil.charting.charts.LineChart
-import com.github.mikephil.charting.data.Entry
-import com.github.mikephil.charting.data.LineData
-import com.github.mikephil.charting.data.LineDataSet
-import com.google.accompanist.drawablepainter.rememberDrawablePainter
-import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSButtonState
-import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSButtonType
-import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSJetPackComposeProgressButton
+
 
 val Context.deviceDataStore: DataStore<Preferences> by preferencesDataStore(name = "deviceSettings")
 
@@ -126,6 +125,8 @@ class MainActivity : ComponentActivity() {
         locationPermissionRequest.launch(arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION))
+
+        initDeviceStates()
 
         resetDeviceStates()
 
@@ -180,6 +181,7 @@ class MainActivity : ComponentActivity() {
 
                     lifecycleScope.launch {
                         setThingyOn(this@MainActivity)
+                        setThingyLoading(this@MainActivity, false)
                         setThingyAcc(this@MainActivity,
                             "${thingyLiveData.accelX}",
                             "${thingyLiveData.accelY}",
@@ -209,7 +211,7 @@ class MainActivity : ComponentActivity() {
                 // A surface container using the 'background' color from the theme
                 Surface(color = MaterialTheme.colors.background) {
 //                    DeviceIdTextField(defaultRespeckId, defaultThingyId)
-                    MainScreen()
+                    AppScreen()
                 }
             }
         }
@@ -259,6 +261,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun initDeviceStates() {
+        lifecycleScope.launch {
+            setThingyLoading(this@MainActivity, true)
+        }
+    }
+
     private fun resetDeviceStates() {
         lifecycleScope.launch {
             setRespeckOff(this@MainActivity)
@@ -268,7 +276,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen() {
+fun AppScreen() {
     val navController = rememberNavController ()
     Scaffold (
         topBar = {  },
@@ -285,9 +293,9 @@ fun FloatingPairingButton() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val pairState = flow {
+    val respeckOn = flow {
         context.deviceDataStore.data.map {
-            it[booleanPreferencesKey("pairState")]
+            it[booleanPreferencesKey("respeckOn")]
         }.collect {
             if (it != null) {
                 this.emit(it)
@@ -295,29 +303,64 @@ fun FloatingPairingButton() {
         }
     }.collectAsState(initial = false).value
 
+    val respeckId = flow {
+        context.deviceDataStore.data.map {
+            it[stringPreferencesKey("respeckId")]
+        }.collect {
+            if (it != null) {
+                this.emit(it)
+            }
+        }
+    }.collectAsState(initial = "").value
+
+    val thingyOn = flow {
+        context.deviceDataStore.data.map {
+            it[booleanPreferencesKey("thingyOn")]
+        }.collect {
+            if (it != null) {
+                this.emit(it)
+            }
+        }
+    }.collectAsState(initial = false).value
+
+    val thingyId = flow {
+        context.deviceDataStore.data.map {
+            it[stringPreferencesKey("thingyId")]
+        }.collect {
+            if (it != null) {
+                this.emit(it)
+            }
+        }
+    }.collectAsState(initial = "").value
+
     FloatingActionButton(
         backgroundColor = Color.White,
-        contentColor = Color.Blue.copy(0.7f),
+        contentColor = if (thingyOn || respeckOn) {Color.Blue.copy(0.7f)} else {Color.Gray},
         onClick = {
             scope.launch {
-                if (pairState) {
-                    setPairState(context, false)
-                } else {
-                    setPairState(context, true)
+                if (thingyOn && respeckOn) {
+                    syncAllPairing(context, respeckId, thingyId)
+                }
+
+                if (!respeckOn) {
+                    startRespeckPairing(context, respeckId)
+                }
+
+                if (!thingyOn) {
+                    startThingyPairing(context, thingyId)
                 }
             }
         }
     ){
-        Icon(painterResource(id = if (pairState) {
-            R.drawable.bluetooth_connected
+        Icon(if (respeckOn && thingyOn) {
+            painterResource(id = R.drawable.bluetooth_connected)
         } else {
-            R.drawable.bluetooth_disabled
-        }), contentDescription = "PairingState",
-         tint = if (pairState) {
-            Color.Blue.copy(0.7f)
-        } else {
-             Color.Black.copy(0.7f)
-        })
+            if (respeckOn || thingyOn) {
+                painterResource(id = R.drawable.sync)
+            } else {
+                painterResource(id = R.drawable.bluetooth_connected)
+            }
+        }, contentDescription = null)
     }
 }
 
@@ -433,7 +476,7 @@ fun CircularProgressbar3(
     animationDelay: Int = 0,
     foregroundIndicatorColor: Color = Color(0xFF35898f),
     innerForegroundIndicatorColor: Color = Color.Blue.copy(0.8f),
-    backgroundIndicatorColor: Color = Color.LightGray.copy(alpha = 0.3f)
+    backgroundIndicatorColor: Color = Color.LightGray.copy(alpha = 0.3f),
 ) {
 
     // It remembers the number value
@@ -539,7 +582,7 @@ fun CircularProgressbar3(
 @Composable
 private fun ButtonProgressbar(
     backgroundColor: Color = Color(0xFF35898f),
-    onClickButton: () -> Unit
+    onClickButton: () -> Unit,
 ) {
     Button(
         onClick = {
@@ -672,7 +715,7 @@ fun AccountScreen(innerPadding: PaddingValues) {
 fun NavigationGraph(navController: NavHostController, innerPadding: PaddingValues) {
     NavHost(navController, startDestination = BottomNavItem.Home.screenRoute) {
         composable(BottomNavItem.Home.screenRoute) {
-            HomeScreen(innerPadding = innerPadding)
+            HomeScreen(innerPadding)
         }
         composable(BottomNavItem.Device.screenRoute) {
             DeviceScreen(innerPadding)
@@ -874,7 +917,9 @@ fun RespeckTextField() {
                     .fillMaxWidth()
                     .height(IntrinsicSize.Min),
                 value = respeckId,
-                label = { Text(text = if (respeckOn) { "$respeckIdDefault" } else { "Respeck ID" }) },
+                label = { Text(text = if (respeckOn) {
+                    respeckIdDefault
+                } else { "Respeck ID" }) },
                 placeholder = { Text(text = respeckIdDefault.ifEmpty { "Respeck ID" }) },
                 onValueChange = {
                     respeckId = it
@@ -952,6 +997,16 @@ fun ThingyTextField() {
         }
     }.collectAsState(initial = false).value
 
+    val thingyLoading = flow {
+        context.deviceDataStore.data.map {
+            it[booleanPreferencesKey("thingyLoading")]
+        }.collect {
+            if (it != null) {
+                this.emit(it)
+            }
+        }
+    }.collectAsState(initial = false).value
+
     AnimatedVisibility(visible = true) {
         Column {
             val localFocusManager = LocalFocusManager.current
@@ -967,7 +1022,9 @@ fun ThingyTextField() {
                 }
             }.collectAsState(initial = "").value
 
-            var showNoticeMsg by remember {
+            var thingyId by remember { mutableStateOf(TextFieldValue(thingyIdDefault)) }
+
+            var showErrorIcon by remember {
                 mutableStateOf(false)
             }
 
@@ -975,82 +1032,88 @@ fun ThingyTextField() {
                 mutableStateOf(false)
             }
 
-            var thingyId by remember { mutableStateOf(TextFieldValue(thingyIdDefault)) }
             OutlinedTextField(
                 value = thingyId,
                 modifier = Modifier
                     .padding(8.dp)
                     .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                label = { Text(text = if (thingyOn) { "$thingyIdDefault" } else { "Thingy ID" }) },
-                placeholder = { Text(text = thingyIdDefault.ifEmpty { "Thingy ID" }) },
-                enabled = !thingyOn,
-                onValueChange = {
-                    thingyId = it
-                    if (thingyId.text.isNotEmpty()) {
-                        if (thingyId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
-                            showDoneIcon = true
-                        }
-                        else {
-                            showNoticeMsg = true
-                        }
-                    }
-                },
+                    .height(IntrinsicSize.Min)
+                    .imePadding(),
+                enabled = !(thingyLoading || thingyOn),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Text,
                     imeAction = ImeAction.Done
                 ),
                 keyboardActions = KeyboardActions(
                     onDone = {
-                        if (thingyId.text.isNotEmpty()) {
-                            if (thingyId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
-                                scope.launch {
-                                    setThingyId(context, thingyId.text)
-                                }
+                        if (thingyId.text.isNotEmpty() && thingyId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                            scope.launch {
+                                setThingyId(context, thingyId.text)
                             }
+                        } else {
+                            thingyId = TextFieldValue(thingyIdDefault)
                         }
+                        showDoneIcon = false
+                        showErrorIcon = false
                         localFocusManager.clearFocus()
                     }
                 ),
                 leadingIcon = {
                     Icon(
                         painter = painterResource(id = R.drawable.device),
-                        contentDescription = null
+                        contentDescription = null,
+                        tint = if (thingyOn) {Color.Blue} else {Color.Gray}
                     ) },
                 trailingIcon = {
-                    if (thingyId.text.isNotEmpty()) {
-                        if (thingyId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
-                            if (showDoneIcon) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.done),
-                                    contentDescription = null,
-                                    modifier = Modifier.clickable {
-                                        scope.launch {
-                                            setThingyId(context, thingyId.text)
-                                        }
-                                        localFocusManager.clearFocus()
-                                        showDoneIcon = false
-                                    },
-                                    tint = Color.Green
-                                )
-                            }
-
-                        } else {
+                    if (thingyId.text.isNotEmpty() && thingyId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                        if (showDoneIcon) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.done),
+                                contentDescription = null,
+                                modifier = Modifier.clickable {
+                                    scope.launch {
+                                        setThingyId(context, thingyId.text)
+                                    }
+                                    showDoneIcon = false
+                                    showErrorIcon = false
+                                    localFocusManager.clearFocus()
+                                },
+                                tint = Color.Blue
+                            )
+                        }
+                    } else {
+                        if (showErrorIcon) {
                             Icon(
                                 painter = painterResource(id = R.drawable.error),
                                 contentDescription = null,
-                                modifier = Modifier.clickable {
-                                    showNoticeMsg = true
-                                },
                                 tint = Color.Red
                             )
                         }
-                    }}
+                    }
+                },
+                label = { Text(text = if (thingyLoading || thingyOn) {
+                    thingyIdDefault
+                } else {
+                    if (showErrorIcon) { "Invalid Input" } else { "Thingy ID" }
+                }) },
+                placeholder = { Text(text = thingyIdDefault.ifEmpty { "Thingy ID" }) },
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    focusedBorderColor = if (showErrorIcon) {Color.Red} else {Color.Blue},
+                    focusedLabelColor = if (showErrorIcon) {Color.Red} else {Color.Blue},
+                    unfocusedBorderColor = Color.Gray,
+                    unfocusedLabelColor = Color.Gray
+                ),
+                onValueChange = {
+                    thingyId = it
+                    if (it.text.isNotEmpty() && it.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                        showDoneIcon = true
+                        showErrorIcon = false
+                    } else {
+                        showDoneIcon = false
+                        showErrorIcon = true
+                    }
+                },
             )
-
-            AnimatedVisibility(visible = showNoticeMsg) {
-                Text(text = "Invalid Thingy ID.", color = Color.Red)
-            }
         }
     }
 }
@@ -1058,36 +1121,93 @@ fun ThingyTextField() {
 @Composable
 fun ThingyPairingButton() {
     Row (horizontalArrangement = Arrangement.Center) {
-        var roundedProgressState2: SSButtonState by remember {
-            mutableStateOf(SSButtonState.IDLE)
-        }
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+
+        val thingyOn = flow {
+            context.deviceDataStore.data.map {
+                it[booleanPreferencesKey("thingyOn")]
+            }.collect {
+                if (it != null) {
+                    this.emit(it)
+                }
+            }
+        }.collectAsState(initial = false).value
+
+        val thingyLoading = flow {
+            context.deviceDataStore.data.map {
+                it[booleanPreferencesKey("thingyLoading")]
+            }.collect {
+                if (it != null) {
+                    this.emit(it)
+                }
+            }
+        }.collectAsState(initial = false).value
+
+        val thingyId = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("thingyId")]
+            }.collect {
+                if (it != null) {
+                    this.emit(it)
+                }
+            }
+        }.collectAsState(initial = "").value
 
         SSJetPackComposeProgressButton(
-            assetColor = colorResource(id = R.color.blue),
+            assetColor = if (!thingyOn) {colorResource(id = R.color.teal)} else {colorResource(id = R.color.blue)},
             colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
             buttonBorderStroke = BorderStroke(0.dp,
                 SolidColor(colorResource(id = R.color.grey))),
             type = SSButtonType.CIRCLE,
             onClick = {
-                roundedProgressState2 =
-                    if (roundedProgressState2 == SSButtonState.IDLE) {
-                        SSButtonState.LOADING
+                if (!thingyLoading) {
+                    if (!thingyOn) {
+                        val sharedPreferences = context.getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
+
+                        sharedPreferences.edit().putString(
+                            Constants.THINGY_MAC_ADDRESS_PREF,
+                            thingyId
+                        ).apply()
+
+                        val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, context.applicationContext)
+
+                        if (!isServiceRunning) {
+                            context.startService(Intent(context, BluetoothSpeckService::class.java))
+                        }
+
+                        scope.launch {
+                            setThingyLoading(context, true)
+                        }
                     } else {
-                        if (roundedProgressState2 == SSButtonState.SUCCESS) {
-                            SSButtonState.IDLE
-                        } else {
-                            SSButtonState.IDLE
+                        val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, context.applicationContext)
+
+                        if (isServiceRunning) {
+                            val serviceIntent = Intent(context, BluetoothSpeckService::class.java)
+                            context.stopService(serviceIntent)
+                        }
+
+                        scope.launch {
+                            setThingyLoading(context, true)
+                            delay(600)
+                            setThingyOff(context)
+                            setThingyLoading(context, false)
                         }
                     }
-
-
+                } else {
+                    if (!thingyOn) {
+                        scope.launch {
+                            setThingyLoading(context, false)
+                        }
+                    }
+                }
             },
-            buttonState = roundedProgressState2,
+            buttonState = if (thingyLoading) {SSButtonState.LOADING} else { if (thingyOn) {SSButtonState.SUCCESS} else {SSButtonState.IDLE}},
             width = 128.dp,
             height = 48.dp,
             padding = PaddingValues(12.dp),
             cornerRadius = 64,
-            leftImagePainter = if (roundedProgressState2 != SSButtonState.SUCCESS) {
+            leftImagePainter = if (!thingyOn) {
                 rememberDrawablePainter(drawable = AppCompatResources.getDrawable(
                     LocalContext.current,
                     R.drawable.sensor24))
@@ -1182,16 +1302,6 @@ fun ThingyLiveMatrix() {
     Column {
         val context = LocalContext.current
 
-        val thingyId = flow {
-            context.deviceDataStore.data.map {
-                it[stringPreferencesKey("thingyId")]
-            }.collect {
-                if (it != null) {
-                    this.emit(it)
-                }
-            }
-        }.collectAsState(initial = "")
-
         val thingyAccX = flow {
             context.deviceDataStore.data.map {
                 it[stringPreferencesKey("thingyAccX")]
@@ -1276,9 +1386,6 @@ fun ThingyLiveMatrix() {
             })
         }.collectAsState(initial = "0")
 
-
-
-        Text(text = thingyId.value)
         Text(text = "[${thingyAccX.value}, ${thingyAccY.value}, ${thingyAccZ.value}]")
         Text(text = "[${thingyGyrX.value}, ${thingyGyrY.value}, ${thingyGyrZ.value}]")
         Text(text = "[${thingyMagX.value}, ${thingyMagY.value}, ${thingyMagZ.value}]")
@@ -1287,48 +1394,53 @@ fun ThingyLiveMatrix() {
 
 @Composable
 fun ThingyLiveChart() {
+    val entriesAccX = ArrayList<Entry>()
+    entriesAccX.add(Entry(0f, 10f))
+    entriesAccX.add(Entry(1f, 8f))
+    entriesAccX.add(Entry(2f, 21f))
+    entriesAccX.add(Entry(3f, 3f))
+    entriesAccX.add(Entry(4f, 9f))
+    val entriesAccY = ArrayList<Entry>()
+    entriesAccY.add(Entry(0f, 11f))
+    entriesAccY.add(Entry(1f, 12f))
+    entriesAccY.add(Entry(2f, 13f))
+    entriesAccY.add(Entry(3f, 14f))
+    entriesAccY.add(Entry(4f, 15f))
+    val entriesAccZ = ArrayList<Entry>()
+    entriesAccZ.add(Entry(0f, 18f))
+    entriesAccZ.add(Entry(1f, 16f))
+    entriesAccZ.add(Entry(2f, 14f))
+    entriesAccZ.add(Entry(3f, 12f))
+    entriesAccZ.add(Entry(4f, 10f))
+
+    val datasetAccX = LineDataSet(entriesAccX, "Accel X")
+    val datasetAccY = LineDataSet(entriesAccY, "Accel Y")
+    val datasetAccZ = LineDataSet(entriesAccZ, "Accel Z")
+
+    val datasetThingy = ArrayList<ILineDataSet>()
+    datasetThingy.add(datasetAccX)
+    datasetThingy.add(datasetAccY)
+    datasetThingy.add(datasetAccZ)
+
+    val thingyData = LineData(datasetThingy)
+
     AndroidView(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp),
         factory = { ctx: Context ->
-            val lineChart = LineChart(ctx)
+            val thingyLineChart = LineChart(ctx)
 
-            val lineEntry = ArrayList<Entry>();
-            lineEntry.add(Entry(20f , 0f))
-            lineEntry.add(Entry(50f , 1f))
-            lineEntry.add(Entry(70f , 2f))
-            lineEntry.add(Entry(10f , 3f))
-            lineEntry.add(Entry(30f , 4f))
-
-            val dataSet = LineDataSet(lineEntry, "Label").apply { color = Color.Red.toArgb() }
-
-            val lineData = LineData(dataSet)
-
-            lineChart.data = lineData
-            lineChart.invalidate()
-
-            lineChart
-//        .apply {
-//            val xValues = ArrayList<String>()
-//            xValues.add("13")
-//            xValues.add("6")
-//            xValues.add("17")
-//            xValues.add("5")
-//            xValues.add("8")
-//
-//            val lineEntry = ArrayList<Entry>();
-//            lineEntry.add(Entry(20f , 0f))
-//            lineEntry.add(Entry(50f , 1f))
-//            lineEntry.add(Entry(70f , 2f))
-//            lineEntry.add(Entry(10f , 3f))
-//            lineEntry.add(Entry(30f , 4f))
-//
-//            val lineDataSet = LineDataSet(lineEntry, "First")
-//
-//            ctx.data = LineData(lineDataSet)
-//        }
+            thingyLineChart.data = thingyData
+            thingyLineChart
     }) {
-        it.lineData.notifyDataChanged()
+        thingyData.notifyDataChanged()
         it.notifyDataSetChanged()
         it.invalidate()
+        it.setVisibleXRangeMaximum(150f)
+        it.moveViewToX(it.lowestVisibleX + 40)
+
+        setData()
     }
 }
 
@@ -1551,6 +1663,13 @@ suspend fun setThingyOff(context: Context) {
     }
 }
 
+suspend fun setThingyLoading(context: Context, loading: Boolean) {
+    val thingyLoadingKey = booleanPreferencesKey("thingyLoading")
+    context.deviceDataStore.edit {
+        it[thingyLoadingKey] = loading
+    }
+}
+
 suspend fun setThingyAcc(context: Context, accX: String, accY: String, accZ: String) {
     val thingyAccXKey = stringPreferencesKey("thingyAccX")
     val thingyAccYKey = stringPreferencesKey("thingyAccY")
@@ -1581,6 +1700,70 @@ suspend fun setThingyMag(context: Context, magX: String, magY: String, magZ: Str
         it[thingyMagXKey] = magX
         it[thingyMagYKey] = magY
         it[thingyMagZKey] = magZ
+    }
+}
+
+suspend fun startRespeckPairing(context: Context, respeckId: String) {
+    val sharedPreferences = context.getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
+
+    sharedPreferences.edit().putString(
+        Constants.RESPECK_MAC_ADDRESS_PREF,
+        respeckId
+    ).apply()
+    sharedPreferences.edit().putInt(Constants.RESPECK_VERSION, 6).apply()
+
+    val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, context.applicationContext)
+    val serviceIntent = Intent(context, BluetoothSpeckService::class.java)
+
+    if (!isServiceRunning) {
+        context.startService(serviceIntent)
+    } else {
+        context.stopService(serviceIntent)
+        context.startService(serviceIntent)
+    }
+}
+
+suspend fun startThingyPairing(context: Context, thingyId: String) {
+    val sharedPreferences = context.getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
+
+    sharedPreferences.edit().putString(
+        Constants.THINGY_MAC_ADDRESS_PREF,
+        thingyId
+    ).apply()
+
+    val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, context.applicationContext)
+    val serviceIntent = Intent(context, BluetoothSpeckService::class.java)
+
+    if (!isServiceRunning) {
+        context.startService(serviceIntent)
+    } else {
+        context.stopService(serviceIntent)
+        context.startService(serviceIntent)
+    }
+}
+
+suspend fun syncAllPairing(context: Context, respeckId: String, thingyId: String) {
+    val sharedPreferences = context.getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
+
+    sharedPreferences.edit().putString(
+        Constants.RESPECK_MAC_ADDRESS_PREF,
+        respeckId
+    ).apply()
+    sharedPreferences.edit().putInt(Constants.RESPECK_VERSION, 6).apply()
+
+    sharedPreferences.edit().putString(
+        Constants.THINGY_MAC_ADDRESS_PREF,
+        thingyId
+    ).apply()
+
+    val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, context.applicationContext)
+    val serviceIntent = Intent(context, BluetoothSpeckService::class.java)
+
+    if (!isServiceRunning) {
+        context.startService(serviceIntent)
+    } else {
+        context.stopService(serviceIntent)
+        context.startService(serviceIntent)
     }
 }
 
