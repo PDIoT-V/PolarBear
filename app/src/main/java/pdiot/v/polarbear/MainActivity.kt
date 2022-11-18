@@ -1394,6 +1394,38 @@ fun ThingyLiveMatrix() {
 
 @Composable
 fun ThingyLiveChart() {
+    val context = LocalContext.current
+
+    val thingyAccX = flow {
+        context.deviceDataStore.data.map {
+            it[stringPreferencesKey("thingyAccX")]
+        }.collect(collector = {
+            if (it != null) {
+                this.emit(it)
+            }
+        })
+    }.collectAsState(initial = "0")
+
+    val thingyAccY = flow {
+        context.deviceDataStore.data.map {
+            it[stringPreferencesKey("thingyAccY")]
+        }.collect(collector = {
+            if (it != null) {
+                this.emit(it)
+            }
+        })
+    }.collectAsState(initial = "0")
+
+    val thingyAccZ = flow {
+        context.deviceDataStore.data.map {
+            it[stringPreferencesKey("thingyAccZ")]
+        }.collect(collector = {
+            if (it != null) {
+                this.emit(it)
+            }
+        })
+    }.collectAsState(initial = "0")
+
     val entriesAccX = ArrayList<Entry>()
     entriesAccX.add(Entry(0f, 10f))
     entriesAccX.add(Entry(1f, 8f))
@@ -1432,16 +1464,15 @@ fun ThingyLiveChart() {
             val thingyLineChart = LineChart(ctx)
 
             thingyLineChart.data = thingyData
-            thingyLineChart
-    }) {
-        thingyData.notifyDataChanged()
-        it.notifyDataSetChanged()
-        it.invalidate()
-        it.setVisibleXRangeMaximum(150f)
-        it.moveViewToX(it.lowestVisibleX + 40)
-
-        setData()
-    }
+            thingyLineChart.apply {
+            } },
+        update = { thingyLineChart ->
+            thingyAccX.let {
+                thingyLineChart.data.dataSets[0].setDrawValues(true)
+            }
+            thingyLineChart.animateXY(1000, 1000)
+        }
+    )
 }
 
 @Composable
