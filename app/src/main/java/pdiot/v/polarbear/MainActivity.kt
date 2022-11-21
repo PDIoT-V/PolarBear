@@ -19,20 +19,19 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.InternalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -40,17 +39,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.lifecycleScope
@@ -76,8 +71,10 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import org.tensorflow.lite.DataType
+import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import pdiot.v.polarbear.bluetooth.BluetoothSpeckService
-import pdiot.v.polarbear.bluetooth.ConnectingActivity
+import pdiot.v.polarbear.ml.AllModel90
 import pdiot.v.polarbear.ui.theme.PolarBearTheme
 import pdiot.v.polarbear.utils.Constants
 import pdiot.v.polarbear.utils.RESpeckLiveData
@@ -143,9 +140,35 @@ class MainActivity : ComponentActivity() {
                         intent.getSerializableExtra(Constants.RESPECK_LIVE_DATA) as RESpeckLiveData
                     }
 
+                    val model = AllModel90.newInstance(context)
+
+                    // Creates inputs for reference.
+                    val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(1, 50, 6), DataType.FLOAT32)
+
+                    val inputArrayList = FloatArray(50 * 6) { 0.toFloat() }.drop(6).toMutableList()
+                    inputArrayList.addAll(
+                        arrayListOf(respeckLiveData.accelX, respeckLiveData.accelY, respeckLiveData.accelZ,
+                            respeckLiveData.gyro.x, respeckLiveData.gyro.y, respeckLiveData.gyro.z)
+                    )
+                    val inputArray = inputArrayList.toFloatArray()
+
+                    inputFeature0.loadArray(inputArray)
+
+                    // Runs model inference and gets result.
+                    val outputs = model.process(inputFeature0)
+                    val outputFeature0 = outputs.outputFeature0AsTensorBuffer
+
+                    val resultList = getResultList(outputFeature0.floatArray)
+
+                    Log.d("Model Prediction", resultList.toString())
+
+                    // Releases model resources if no longer used.
+                    model.close()
+
                     Log.d("Live", "onReceive: liveData = $respeckLiveData")
                     lifecycleScope.launch {
                         setRespeckOn(this@MainActivity)
+                        setRespeckLoading(this@MainActivity, false)
                         setRespeckAcc(this@MainActivity,
                             "${respeckLiveData.accelX}",
                             "${respeckLiveData.accelY}",
@@ -154,6 +177,7 @@ class MainActivity : ComponentActivity() {
                             "${respeckLiveData.gyro.x}",
                             "${respeckLiveData.gyro.y}",
                             "${respeckLiveData.gyro.z}")
+                        setPred(this@MainActivity, resultList)
                     }
                 }
             }
@@ -263,6 +287,7 @@ class MainActivity : ComponentActivity() {
 
     private fun initDeviceStates() {
         lifecycleScope.launch {
+            setRespeckLoading(this@MainActivity, true)
             setThingyLoading(this@MainActivity, true)
         }
     }
@@ -272,6 +297,16 @@ class MainActivity : ComponentActivity() {
             setRespeckOff(this@MainActivity)
             setThingyOff(this@MainActivity)
         }
+    }
+
+    fun getResultList(arr: FloatArray): List<Pair<Int, Float>> {
+        val resultMap = mutableMapOf<Int, Float>()
+
+        for (i in 0..13) {
+            resultMap[i] = arr[i]
+        }
+
+        return resultMap.toList().sortedBy { (key, value) -> value }.reversed()
     }
 }
 
@@ -285,6 +320,58 @@ fun AppScreen() {
         bottomBar = { BottomNavigation (navController = navController) }
     ) { paddingValues ->
         NavigationGraph (navController = navController, innerPadding = paddingValues)
+    }
+}
+
+@Composable
+fun NavigationGraph(navController: NavHostController, innerPadding: PaddingValues) {
+    NavHost(navController, startDestination = BottomNavItem.Home.screenRoute) {
+        composable(BottomNavItem.Home.screenRoute) {
+            HomeScreen(innerPadding)
+        }
+        composable(BottomNavItem.Device.screenRoute) {
+            DeviceScreen(innerPadding)
+        }
+        composable(BottomNavItem.Account.screenRoute) {
+            AccountScreen(innerPadding)
+        }
+    }
+}
+
+@Composable
+fun BottomNavigation(navController: NavController) {
+    val items = listOf(
+        BottomNavItem.Home,
+        BottomNavItem.Device,
+        BottomNavItem.Account,
+    )
+    BottomNavigation(
+        backgroundColor = Color.White,
+        contentColor = Color.Black
+    ) {
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = navBackStackEntry?.destination?.route
+        items.forEach { item ->
+            BottomNavigationItem(
+                icon = { Icon(painterResource(id = item.icon), contentDescription = item.screenTitle) },
+                label = { Text(text = item.screenTitle, fontSize = 9.sp) },
+                selectedContentColor = Color.Blue.copy(0.7f),
+                unselectedContentColor = Color.Black.copy(0.7f),
+                alwaysShowLabel = true,
+                selected = currentRoute == item.screenRoute,
+                onClick = {
+                    navController.navigate(item.screenRoute) {
+                        navController.graph.startDestinationRoute?.let { screen_route ->
+                            popUpTo(screen_route) {
+                                saveState = true
+                            }
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -338,7 +425,7 @@ fun FloatingPairingButton() {
         contentColor = if (thingyOn || respeckOn) {Color.Blue.copy(0.7f)} else {Color.Gray},
         onClick = {
             scope.launch {
-                if (thingyOn && respeckOn) {
+                if (!thingyOn && !respeckOn) {
                     syncAllPairing(context, respeckId, thingyId)
                 }
 
@@ -377,6 +464,8 @@ fun HomeScreen(innerPadding: PaddingValues) {
     val mainViewModel: CountViewModel = viewModel()
     val seconds by mainViewModel.seconds.collectAsState(initial = "00")
 
+    val context = LocalContext.current
+
     Column (
         modifier = Modifier
             .fillMaxSize()
@@ -386,52 +475,151 @@ fun HomeScreen(innerPadding: PaddingValues) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(20.dp)) {
-            var actionList by remember {
+            val actMap = mapOf(
+                0 to ActionInfo(11, "Climbing stairs", R.drawable.walking),
+                1 to ActionInfo(12, "Descending stairs", R.drawable.walking),
+                2 to ActionInfo(3, "Desk work", R.drawable.sitting),
+                3 to ActionInfo(0, "Sitting", R.drawable.sitting),
+                4 to ActionInfo(1, "Sitting Bent Forward", R.drawable.sitting),
+                5 to ActionInfo(2, "Sitting Bent Backward", R.drawable.sitting),
+                6 to ActionInfo(4, "Standing", R.drawable.standing),
+                7 to ActionInfo(5, "Lying on left", R.drawable.lying),
+                8 to ActionInfo(8, "Lying on back", R.drawable.lying),
+                9 to ActionInfo(7, "Lying on stomach", R.drawable.lying),
+                10 to ActionInfo(6, "Lying on right", R.drawable.lying),
+                11 to ActionInfo(13, "Movement", R.drawable.movement),
+                12 to ActionInfo(10, "Running", R.drawable.running),
+                13 to ActionInfo(9, "Walking", R.drawable.walking),
+            )
+
+            val pred0I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("pred0I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val pred0C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("pred0C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val pred1I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("pred1I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val pred1C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("pred1C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val pred2I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("pred2I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val pred2C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("pred2C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val pred3I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("pred3I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val pred3C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("pred3C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val actList by remember {
                 mutableStateOf(listOf(
-                    ActionInfo(0, "Sitting Straight", R.drawable.sitting),
-                    ActionInfo(1, "Sitting Bent Forward", R.drawable.sitting),
-                    ActionInfo(2, "Sitting Bent Backward", R.drawable.sitting),
-                    ActionInfo(3, "Desk work", R.drawable.sitting),
-                    ActionInfo(4, "Standing", R.drawable.standing),
-                    ActionInfo(5, "Lying down on the left side", R.drawable.lying),
-                    ActionInfo(6, "Lying down on the right side", R.drawable.lying),
-                    ActionInfo(7, "Lying down on the front", R.drawable.lying),
-                    ActionInfo(8, "Lying down on the back", R.drawable.lying),
-                    ActionInfo(9, "Walking", R.drawable.walking),
-                    ActionInfo(10, "Running", R.drawable.running),
-                    ActionInfo(11, "Ascending stairs", R.drawable.walking),
-                    ActionInfo(12, "Descending stairs", R.drawable.walking),
-                    ActionInfo(13, "General movement", R.drawable.movement),
+                    actMap[pred0I],
+                    actMap[pred1I],
+                    actMap[pred2I],
+                    actMap[pred3I]
                 ))
             }
 
+            val actCMap = mapOf(
+                0 to pred0C,
+                1 to pred1C,
+                2 to pred2C,
+                3 to pred3C
+            )
+
+            Text(text = "$pred0I, $pred1I, $pred2I, $pred3I")
 
             LazyColumn {
-                items(actionList.slice(0..4), key = {it.id}) {
+                itemsIndexed(actList) { index, item ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                actionList = actionList
-                                    .shuffled()
-                                    .slice(0..4)
-                            }
+//                            .clickable {
+//                                actionList = actionList
+//                                    .shuffled()
+//                                    .slice(0..4)
+//                            }
                             .animateItemPlacement()
                             .padding(16.dp, 16.dp, 16.dp, 16.dp)) {
-                        Icon(painterResource(id = it.icon), it.name)
-                        Column (modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 0.dp)) {
-                            val actionCategory = if (it.id in listOf(0, 1, 2, 3)) { "sitting" }
-                            else { if (it.id == 4) { "standing" }
-                            else { if (it.id in listOf(5, 6, 7, 8)) { "lying" }
-                            else { if (it.id == 9) { "walking" }
-                            else { if (it.id == 10) { "running" }
-                            else { if (it.id in listOf(11, 12)) { "walking" }
-                            else { if (it.id == 13) { "movement" }
-                            else { "" } } } } } } }
-                            Text(text = actionCategory)
-                            LinearProgressIndicator()
+                        if (item != null) {
+                            Icon(painterResource(id = item.icon), item.name)
+                            Column (modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 0.dp)) {
+//                                val actionCategory = if (item.id in listOf(0, 1, 2, 3)) { "sitting" }
+//                                else { if (item.id == 4) { "standing" }
+//                                else { if (item.id in listOf(5, 6, 7, 8)) { "lying" }
+//                                else { if (item.id == 9) { "walking" }
+//                                else { if (item.id == 10) { "running" }
+//                                else { if (item.id in listOf(11, 12)) { "walking" }
+//                                else { if (item.id == 13) { "movement" }
+//                                else { "" } } } } } } }
+
+                                val actionCategory = item.name
+                                Text(text = actionCategory)
+                                LinearProgressIndicator(progress = actCMap[index]!!)
+                            }
+                            Text(text = "${item.id}")
                         }
-                        Text(text = "${it.id}")
                     }
                 }
             }
@@ -628,11 +816,9 @@ class CountViewModel : ViewModel() {
 
 @Composable
 fun DeviceScreen(innerPadding: PaddingValues) {
-//    DeviceIdTextField("E7:6E:9C:24:55:9A", "DF:80:AA:B3:5A:F7")
     Column (
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Gray)
             .padding(innerPadding),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -659,8 +845,11 @@ fun DeviceScreen(innerPadding: PaddingValues) {
                     .systemBarsPadding(),
                 elevation = cardEvaluation
             ) {
-                Column {
+                Column (
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     RespeckTextField()
+                    DevicePairingButton()
                     RespeckLiveMatrix()
                 }
             }
@@ -680,196 +869,14 @@ fun DeviceScreen(innerPadding: PaddingValues) {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     ThingyTextField()
-                    ThingyPairingButton()
+                    DevicePairingButton()
                     ThingyLiveMatrix()
-                    ThingyLiveChart()
+//                    ThingyLiveChart()
                 }
             }
         }
 
         Spacer(modifier = Modifier.width(32.dp))
-    }
-}
-
-@Composable
-fun AccountScreen(innerPadding: PaddingValues) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colorResource(id = R.color.blue))
-            .wrapContentSize(Alignment.Center)
-            .padding(innerPadding)
-    ) {
-        Text(
-            text = "Add Post Screen",
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-            textAlign = TextAlign.Center,
-            fontSize = 20.sp
-        )
-    }
-}
-
-@Composable
-fun NavigationGraph(navController: NavHostController, innerPadding: PaddingValues) {
-    NavHost(navController, startDestination = BottomNavItem.Home.screenRoute) {
-        composable(BottomNavItem.Home.screenRoute) {
-            HomeScreen(innerPadding)
-        }
-        composable(BottomNavItem.Device.screenRoute) {
-            DeviceScreen(innerPadding)
-        }
-        composable(BottomNavItem.Account.screenRoute) {
-            AccountScreen(innerPadding)
-        }
-    }
-}
-
-@Composable
-fun BottomNavigation(navController: NavController) {
-    val items = listOf(
-        BottomNavItem.Home,
-        BottomNavItem.Device,
-        BottomNavItem.Account,
-    )
-    BottomNavigation(
-        backgroundColor = Color.White,
-        contentColor = Color.Black
-    ) {
-        val navBackStackEntry by navController.currentBackStackEntryAsState()
-        val currentRoute = navBackStackEntry?.destination?.route
-        items.forEach { item ->
-            BottomNavigationItem(
-                icon = { Icon(painterResource(id = item.icon), contentDescription = item.screenTitle) },
-                label = { Text(text = item.screenTitle, fontSize = 9.sp) },
-                selectedContentColor = Color.Blue.copy(0.7f),
-                unselectedContentColor = Color.Black.copy(0.7f),
-                alwaysShowLabel = true,
-                selected = currentRoute == item.screenRoute,
-                onClick = {
-                    navController.navigate(item.screenRoute) {
-                        navController.graph.startDestinationRoute?.let { screen_route ->
-                            popUpTo(screen_route) {
-                                saveState = true
-                            }
-                        }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                }
-            )
-        }
-    }
-}
-
-
-@Composable
-fun DeviceIdTextField(defaultRespeckId: String, defaultThingyId: String) {
-    Card (
-        Modifier
-            .fillMaxWidth()
-            .padding(20.dp)
-            .height(IntrinsicSize.Min),
-        elevation = 10.dp,
-    ) {
-        Column {
-            val context = LocalContext.current
-            val localFocusManager = LocalFocusManager.current
-            val scope = rememberCoroutineScope()
-
-            val respeckOn = flow {
-                context.deviceDataStore.data.map {
-                    it[booleanPreferencesKey("respeckOn")]
-                }.collect {
-                    if (it != null) {
-                        this.emit(it)
-                    }
-                }
-            }.collectAsState(initial = false).value
-
-            val thingyOn = flow {
-                context.deviceDataStore.data.map {
-                    it[booleanPreferencesKey("thingyOn")]
-                }.collect {
-                    if (it != null) {
-                        this.emit(it)
-                    }
-                }
-            }.collectAsState(initial = false).value
-
-            val animationDuration = 2000
-
-            AnimatedVisibility(
-                visible = !(thingyOn && respeckOn),
-                enter = fadeIn(animationSpec = tween(durationMillis = animationDuration)),
-                exit = fadeOut(animationSpec = tween(durationMillis = animationDuration))
-            ) {
-                Column (Modifier.height(IntrinsicSize.Min)) {
-                    var respeckId by remember { mutableStateOf(TextFieldValue(defaultRespeckId)) }
-                    OutlinedTextField(value = respeckId,
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .fillMaxWidth()
-                            .height(IntrinsicSize.Min),
-                        label = { Text(text = "Respeck ID") },
-                        placeholder = { Text(text = "Respeck ID") },
-                        onValueChange = {
-                            respeckId = it
-                            scope.launch {
-                                setRespeckId(context, it.text)
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Text,
-                            imeAction = ImeAction.Next
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onNext = { localFocusManager.moveFocus(FocusDirection.Down) }
-                        )
-                    )
-
-                    var thingyId by remember { mutableStateOf(TextFieldValue(defaultThingyId)) }
-                    OutlinedTextField(value = thingyId,
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .fillMaxWidth()
-                            .height(IntrinsicSize.Min),
-                        label = { Text(text = "Thingy ID") },
-                        placeholder = { Text(text = "Thingy ID") },
-                        onValueChange = {
-                            thingyId = it
-                            scope.launch {
-                                setThingyId(context, it.text)
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Text,
-                            imeAction = ImeAction.Done
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onDone = { localFocusManager.clearFocus() }
-                        )
-                    )
-
-                    OutlinedButton(
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .fillMaxWidth()
-                            .height(IntrinsicSize.Min),
-                        onClick = {
-                            context.startActivity(Intent(context, ConnectingActivity::class.java))
-                        }
-                    ) {
-                        Text("Pair")
-                    }
-                }
-            }
-
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-
-            DeviceLiveDataView()
-        }
     }
 }
 
@@ -887,7 +894,17 @@ fun RespeckTextField() {
         }
     }.collectAsState(initial = false).value
 
-    AnimatedVisibility(visible = !respeckOn) {
+    val respeckLoading = flow {
+        context.deviceDataStore.data.map {
+            it[booleanPreferencesKey("respeckLoading")]
+        }.collect {
+            if (it != null) {
+                this.emit(it)
+            }
+        }
+    }.collectAsState(initial = false).value
+
+    AnimatedVisibility(visible = true) {
         Column {
             val localFocusManager = LocalFocusManager.current
             val scope = rememberCoroutineScope()
@@ -902,7 +919,9 @@ fun RespeckTextField() {
                 }
             }.collectAsState(initial = "").value
 
-            var showNoticeMsg by remember {
+            var respeckId by remember { mutableStateOf(TextFieldValue(respeckIdDefault)) }
+
+            var showErrorIcon by remember {
                 mutableStateOf(false)
             }
 
@@ -910,75 +929,88 @@ fun RespeckTextField() {
                 mutableStateOf(false)
             }
 
-            var respeckId by remember { mutableStateOf(TextFieldValue(respeckIdDefault)) }
             OutlinedTextField(
+                value = respeckId,
                 modifier = Modifier
                     .padding(8.dp)
                     .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                value = respeckId,
-                label = { Text(text = if (respeckOn) {
-                    respeckIdDefault
-                } else { "Respeck ID" }) },
-                placeholder = { Text(text = respeckIdDefault.ifEmpty { "Respeck ID" }) },
-                onValueChange = {
-                    respeckId = it
-                    showDoneIcon = true
-                },
+                    .height(IntrinsicSize.Min)
+                    .imePadding(),
+                enabled = !(respeckLoading || respeckOn),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Next
+                    imeAction = ImeAction.Done
                 ),
                 keyboardActions = KeyboardActions(
-                    onNext = {
-                        if (respeckId.text.isNotEmpty()) {
-                            if (respeckId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
-                                scope.launch {
-                                    setRespeckId(context, respeckId.text)
-                                }
+                    onDone = {
+                        if (respeckId.text.isNotEmpty() && respeckId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                            scope.launch {
+                                setRespeckId(context, respeckId.text)
                             }
+                        } else {
+                            respeckId = TextFieldValue(respeckIdDefault)
                         }
-                        localFocusManager.moveFocus(FocusDirection.Down)
+                        showDoneIcon = false
+                        showErrorIcon = false
+                        localFocusManager.clearFocus()
                     }
                 ),
                 leadingIcon = {
                     Icon(
                         painter = painterResource(id = R.drawable.device),
-                        contentDescription = null
+                        contentDescription = null,
+                        tint = if (respeckOn) {Color.Blue} else {Color.Gray}
                     ) },
                 trailingIcon = {
-                    if (respeckId.text.isNotEmpty()) {
-                        if (respeckId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
-                            if (showDoneIcon) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.done),
-                                    contentDescription = null,
-                                    modifier = Modifier.clickable {
-                                        scope.launch {
-                                            setRespeckId(context, respeckId.text)
-                                        }
-                                        localFocusManager.moveFocus(FocusDirection.Down)
-                                        showDoneIcon = false
-                                    },
-                                    tint = Color.Green
-                                )
-                            }
-
-                        } else {
+                    if (respeckId.text.isNotEmpty() && respeckId.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                        if (showDoneIcon) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.done),
+                                contentDescription = null,
+                                modifier = Modifier.clickable {
+                                    scope.launch {
+                                        setRespeckId(context, respeckId.text)
+                                    }
+                                    showDoneIcon = false
+                                    showErrorIcon = false
+                                    localFocusManager.clearFocus()
+                                },
+                                tint = Color.Blue
+                            )
+                        }
+                    } else {
+                        if (showErrorIcon) {
                             Icon(
                                 painter = painterResource(id = R.drawable.error),
                                 contentDescription = null,
-                                modifier = Modifier.clickable {
-                                    showNoticeMsg = true
-                                },
                                 tint = Color.Red
                             )
                         }
-                    }}
+                    }
+                },
+                label = { Text(text = if (respeckLoading || respeckOn) {
+                    respeckIdDefault
+                } else {
+                    if (showErrorIcon) { "Invalid Input" } else { "Respeck ID" }
+                }) },
+                placeholder = { Text(text = respeckIdDefault.ifEmpty { "Respeck ID" }) },
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    focusedBorderColor = if (showErrorIcon) {Color.Red} else {Color.Blue},
+                    focusedLabelColor = if (showErrorIcon) {Color.Red} else {Color.Blue},
+                    unfocusedBorderColor = Color.Gray,
+                    unfocusedLabelColor = Color.Gray
+                ),
+                onValueChange = {
+                    respeckId = it
+                    if (it.text.isNotEmpty() && it.text.matches(Regex("[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}:[0-9a-zA-Z]{2}"))) {
+                        showDoneIcon = true
+                        showErrorIcon = false
+                    } else {
+                        showDoneIcon = false
+                        showErrorIcon = true
+                    }
+                },
             )
-            AnimatedVisibility(visible = showNoticeMsg) {
-                Text(text = "Invalid Respeck ID.", color = Color.Red)
-            }
         }
     }
 }
@@ -1119,10 +1151,40 @@ fun ThingyTextField() {
 }
 
 @Composable
-fun ThingyPairingButton() {
+fun DevicePairingButton() {
     Row (horizontalArrangement = Arrangement.Center) {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
+
+        val respeckOn = flow {
+            context.deviceDataStore.data.map {
+                it[booleanPreferencesKey("respeckOn")]
+            }.collect {
+                if (it != null) {
+                    this.emit(it)
+                }
+            }
+        }.collectAsState(initial = false).value
+
+        val respeckLoading = flow {
+            context.deviceDataStore.data.map {
+                it[booleanPreferencesKey("respeckLoading")]
+            }.collect {
+                if (it != null) {
+                    this.emit(it)
+                }
+            }
+        }.collectAsState(initial = false).value
+
+        val respeckId = flow {
+            context.deviceDataStore.data.map {
+                it[stringPreferencesKey("respeckId")]
+            }.collect {
+                if (it != null) {
+                    this.emit(it)
+                }
+            }
+        }.collectAsState(initial = "").value
 
         val thingyOn = flow {
             context.deviceDataStore.data.map {
@@ -1155,46 +1217,50 @@ fun ThingyPairingButton() {
         }.collectAsState(initial = "").value
 
         SSJetPackComposeProgressButton(
-            assetColor = if (!thingyOn) {colorResource(id = R.color.teal)} else {colorResource(id = R.color.blue)},
+            assetColor = if (respeckOn && thingyOn) {colorResource(id = R.color.blue)} else {colorResource(id = R.color.teal)},
             colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
             buttonBorderStroke = BorderStroke(0.dp,
                 SolidColor(colorResource(id = R.color.grey))),
             type = SSButtonType.CIRCLE,
             onClick = {
-                if (!thingyLoading) {
-                    if (!thingyOn) {
-                        val sharedPreferences = context.getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
-
-                        sharedPreferences.edit().putString(
-                            Constants.THINGY_MAC_ADDRESS_PREF,
-                            thingyId
-                        ).apply()
-
-                        val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, context.applicationContext)
-
-                        if (!isServiceRunning) {
-                            context.startService(Intent(context, BluetoothSpeckService::class.java))
-                        }
-
+                if (!respeckLoading && !thingyLoading) {
+                    if (!respeckOn && !thingyOn) {
                         scope.launch {
+                            setRespeckLoading(context, true)
                             setThingyLoading(context, true)
+                            syncAllPairing(context, respeckId, thingyId)
                         }
                     } else {
-                        val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, context.applicationContext)
-
-                        if (isServiceRunning) {
+                        if (thingyOn && respeckOn) {
+                            val isServiceRunning = Utils.isServiceRunning(BluetoothSpeckService::class.java, context.applicationContext)
                             val serviceIntent = Intent(context, BluetoothSpeckService::class.java)
-                            context.stopService(serviceIntent)
-                        }
 
-                        scope.launch {
-                            setThingyLoading(context, true)
-                            delay(600)
-                            setThingyOff(context)
-                            setThingyLoading(context, false)
+                            if (isServiceRunning) {
+                                context.stopService(serviceIntent)
+                            }
+
+                            scope.launch {
+                                setRespeckLoading(context, true)
+                                setThingyLoading(context, true)
+                                delay(600)
+                                setRespeckOff(context)
+                                setThingyOff(context)
+                                setRespeckLoading(context, false)
+                                setThingyLoading(context, false)
+                            }
+                        } else {
+                            scope.launch {
+                                syncAllPairing(context, respeckId, thingyId)
+                            }
                         }
                     }
                 } else {
+                    if (!respeckOn) {
+                        scope.launch {
+                            setRespeckLoading(context, false)
+                        }
+                    }
+
                     if (!thingyOn) {
                         scope.launch {
                             setThingyLoading(context, false)
@@ -1202,19 +1268,26 @@ fun ThingyPairingButton() {
                     }
                 }
             },
-            buttonState = if (thingyLoading) {SSButtonState.LOADING} else { if (thingyOn) {SSButtonState.SUCCESS} else {SSButtonState.IDLE}},
+            buttonState = if (respeckLoading || thingyLoading) {SSButtonState.LOADING} else { if (respeckOn && thingyOn) {SSButtonState.SUCCESS} else {SSButtonState.IDLE}},
             width = 128.dp,
             height = 48.dp,
             padding = PaddingValues(12.dp),
             cornerRadius = 64,
-            leftImagePainter = if (!thingyOn) {
-                rememberDrawablePainter(drawable = AppCompatResources.getDrawable(
-                    LocalContext.current,
-                    R.drawable.sensor24))
-            } else {
+            leftImagePainter = if (respeckOn && thingyOn) {
                 rememberDrawablePainter(drawable = AppCompatResources.getDrawable(
                     LocalContext.current,
                     R.drawable.sensors_off24))
+
+            } else {
+                if (!respeckOn && !thingyOn) {
+                    rememberDrawablePainter(drawable = AppCompatResources.getDrawable(
+                        LocalContext.current,
+                        R.drawable.sensor24))
+                } else {
+                    rememberDrawablePainter(drawable = AppCompatResources.getDrawable(
+                        LocalContext.current,
+                        R.drawable.sync))
+                }
             }
         )
     }
@@ -1224,16 +1297,6 @@ fun ThingyPairingButton() {
 fun RespeckLiveMatrix() {
     Column {
         val context = LocalContext.current
-
-        val respeckId = flow {
-            context.deviceDataStore.data.map {
-                it[stringPreferencesKey("respeckId")]
-            }.collect {
-                if (it != null) {
-                    this.emit(it)
-                }
-            }
-        }.collectAsState(initial = "")
 
         val respeckAccX = flow {
             context.deviceDataStore.data.map {
@@ -1291,7 +1354,6 @@ fun RespeckLiveMatrix() {
             })
         }.collectAsState(initial = "0")
 
-        Text(text = respeckId.value)
         Text(text = "[${respeckAccX.value}, ${respeckAccY.value}, ${respeckAccZ.value}]")
         Text(text = "[${respeckGyrX.value}, ${respeckGyrY.value}, ${respeckGyrZ.value}]")
     }
@@ -1475,6 +1537,27 @@ fun ThingyLiveChart() {
     )
 }
 
+
+@Composable
+fun AccountScreen(innerPadding: PaddingValues) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colorResource(id = R.color.blue))
+            .wrapContentSize(Alignment.Center)
+            .padding(innerPadding)
+    ) {
+        Text(
+            text = "Add Post Screen",
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            textAlign = TextAlign.Center,
+            fontSize = 20.sp
+        )
+    }
+}
+
 @Composable
 fun DeviceLiveDataView() {
     Column {
@@ -1651,6 +1734,13 @@ suspend fun setRespeckOff(context: Context) {
     }
 }
 
+suspend fun setRespeckLoading(context: Context, loading: Boolean) {
+    val thingyLoadingKey = booleanPreferencesKey("respeckLoading")
+    context.deviceDataStore.edit {
+        it[thingyLoadingKey] = loading
+    }
+}
+
 suspend fun setRespeckAcc(context: Context, accX: String, accY: String, accZ: String) {
     val respeckAccXKey = stringPreferencesKey("respeckAccX")
     val respeckAccYKey = stringPreferencesKey("respeckAccY")
@@ -1776,11 +1866,15 @@ suspend fun startThingyPairing(context: Context, thingyId: String) {
 suspend fun syncAllPairing(context: Context, respeckId: String, thingyId: String) {
     val sharedPreferences = context.getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
 
+    sharedPreferences.edit().putInt(
+        Constants.RESPECK_VERSION,
+        6
+    ).apply()
+
     sharedPreferences.edit().putString(
         Constants.RESPECK_MAC_ADDRESS_PREF,
         respeckId
     ).apply()
-    sharedPreferences.edit().putInt(Constants.RESPECK_VERSION, 6).apply()
 
     sharedPreferences.edit().putString(
         Constants.THINGY_MAC_ADDRESS_PREF,
@@ -1805,9 +1899,111 @@ suspend fun setPairState(context: Context, pairState: Boolean) {
     }
 }
 
-@InternalTextApi
-@Preview
-@Composable
-fun DefaultPreview() {
-    DeviceIdTextField("E7:6E:9C:24:55:9A", "DF:80:AA:B3:5A:F7")
+suspend fun setPred(context: Context, predIC: List<Pair<Int, Float>>) {
+    val predKey0I = intPreferencesKey("pred0I")
+    val predKey0C = floatPreferencesKey("pred0C")
+
+    val predKey1I = intPreferencesKey("pred1I")
+    val predKey1C = floatPreferencesKey("pred1C")
+
+    val predKey2I = intPreferencesKey("pred2I")
+    val predKey2C = floatPreferencesKey("pred2C")
+
+    val predKey3I = intPreferencesKey("pred3I")
+    val predKey3C = floatPreferencesKey("pred3C")
+
+    val predKey4I = intPreferencesKey("pred4I")
+    val predKey4C = floatPreferencesKey("pred4C")
+
+    val predKey5I = intPreferencesKey("pred5I")
+    val predKey5C = floatPreferencesKey("pred5C")
+
+    val predKey6I = intPreferencesKey("pred6I")
+    val predKey6C = floatPreferencesKey("pred6C")
+
+    val predKey7I = intPreferencesKey("pred7I")
+    val predKey7C = floatPreferencesKey("pred7C")
+
+    val predKey8I = intPreferencesKey("pred8I")
+    val predKey8C = floatPreferencesKey("pred8C")
+
+    val predKey9I = intPreferencesKey("pred9I")
+    val predKey9C = floatPreferencesKey("pred9C")
+
+    val predKey10I = intPreferencesKey("pred10I")
+    val predKey10C = floatPreferencesKey("pred10C")
+
+    val predKey11I = intPreferencesKey("pred11I")
+    val predKey11C = floatPreferencesKey("pred11C")
+
+    val predKey12I = intPreferencesKey("pred12I")
+    val predKey12C = floatPreferencesKey("pred12C")
+
+    val predKey13I = intPreferencesKey("pred13I")
+    val predKey13C = floatPreferencesKey("pred13C")
+
+    val mapIC = mapOf(
+        0 to Pair(predKey0I, predKey0C),
+        1 to Pair(predKey1I, predKey1C),
+        2 to Pair(predKey2I, predKey2C),
+        3 to Pair(predKey3I, predKey3C),
+        4 to Pair(predKey4I, predKey4C),
+        5 to Pair(predKey5I, predKey5C),
+        6 to Pair(predKey6I, predKey6C),
+        7 to Pair(predKey7I, predKey7C),
+        8 to Pair(predKey8I, predKey8C),
+        9 to Pair(predKey9I, predKey9C),
+        10 to Pair(predKey10I, predKey10C),
+        11 to Pair(predKey11I, predKey11C),
+        12 to Pair(predKey12I, predKey12C),
+        13 to Pair(predKey13I, predKey13C),
+    )
+
+    context.deviceDataStore.edit {
+        it[predKey0I] = predIC[0].first
+        it[predKey0C] = predIC[0].second
+
+        it[predKey1I] = predIC[1].first
+        it[predKey1C] = predIC[1].second
+
+        it[predKey2I] = predIC[2].first
+        it[predKey2C] = predIC[2].second
+
+        it[predKey3I] = predIC[3].first
+        it[predKey3C] = predIC[3].second
+    }
 }
+
+val featureMap = mapOf(
+    0 to "Climbing stairs",
+    1 to "Descending stairs",
+    2 to "Desk work",
+    3 to "Sitting",
+    4 to "Sitting bent forward",
+    5 to "Sitting bent forward",
+    6 to "Standing",
+    7 to "Lying down left",
+    8 to "Lying down on back",
+    9 to "Lying down on stomach",
+    10 to "Lying down right",
+    11 to "Movement",
+    12 to "Running",
+    13 to "Walking"
+)
+
+val actList = listOf(
+    ActionInfo(0, "Sitting", R.drawable.sitting),
+    ActionInfo(1, "Sitting Bent Forward", R.drawable.sitting),
+    ActionInfo(2, "Sitting Bent Backward", R.drawable.sitting),
+    ActionInfo(3, "Desk work", R.drawable.sitting),
+    ActionInfo(4, "Standing", R.drawable.standing),
+    ActionInfo(5, "Lying on left", R.drawable.lying),
+    ActionInfo(6, "Lying on right", R.drawable.lying),
+    ActionInfo(7, "Lying on stomach", R.drawable.lying),
+    ActionInfo(8, "Lying on back", R.drawable.lying),
+    ActionInfo(9, "Walking", R.drawable.walking),
+    ActionInfo(10, "Running", R.drawable.running),
+    ActionInfo(11, "Ascending stairs", R.drawable.walking),
+    ActionInfo(12, "Descending stairs", R.drawable.walking),
+    ActionInfo(13, "Movement", R.drawable.movement),
+)
