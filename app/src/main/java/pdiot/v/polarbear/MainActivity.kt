@@ -174,7 +174,7 @@ class MainActivity : ComponentActivity() {
 
                     val resultListBasic = getBasicResultList(outputFeature0Basic.floatArray)
 
-                    Log.d("Model Prediction", resultListBasic.toString())
+                    Log.d("Basic Model Prediction", resultListBasic.toString())
 
                     // Releases model resources if no longer used.
                     modelBasic.close()
