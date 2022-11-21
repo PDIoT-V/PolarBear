@@ -81,6 +81,7 @@ import pdiot.v.polarbear.utils.ThingyLiveData
 import pdiot.v.polarbear.utils.Utils
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
+import pdiot.v.polarbear.login.Login
 
 
 val Context.deviceDataStore: DataStore<Preferences> by preferencesDataStore(name = "deviceSettings")
@@ -100,6 +101,9 @@ class MainActivity : ComponentActivity() {
 
     private var defaultRespeckId = "E7:6E:9C:24:55:9A"
     private var defaultThingyId = "DF:80:AA:B3:5A:F7"
+
+    private var respeckLiveWindow = FloatArray(50 * 6) { 0.toFloat() }
+    private var respeckBasicLiveWindow = FloatArray(50 * 6) { 0.toFloat() }
 
     private val locationPermissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -159,11 +163,22 @@ class MainActivity : ComponentActivity() {
                     // Creates inputs for reference.
                     val inputFeature0Basic = TensorBuffer.createFixedSize(intArrayOf(1, 50, 6), DataType.FLOAT32)
 
-                    val inputArrayListBasic = FloatArray(50 * 6) { 0.toFloat() }.drop(6).toMutableList()
+                    val respeckBasicLiveList = respeckBasicLiveWindow.toMutableList()
+
+                    for (i in 0..5) {
+                        respeckBasicLiveList.removeFirst()
+                    }
+
+                    respeckBasicLiveWindow = respeckBasicLiveList.toFloatArray()
+
+                    val inputArrayListBasic = respeckBasicLiveWindow.toMutableList()
+                    Log.d("Basic Live Window", inputArrayListBasic.toString())
                     inputArrayListBasic.addAll(
                         arrayListOf(respeckLiveData.accelX, respeckLiveData.accelY, respeckLiveData.accelZ,
                             respeckLiveData.gyro.x, respeckLiveData.gyro.y, respeckLiveData.gyro.z)
                     )
+                    Log.d("Basic Input Array", inputArrayListBasic.toString())
+
                     val inputArrayBasic = inputArrayListBasic.toFloatArray()
 
                     inputFeature0Basic.loadArray(inputArrayBasic)
@@ -172,9 +187,11 @@ class MainActivity : ComponentActivity() {
                     val outputsBasic = modelBasic.process(inputFeature0Basic)
                     val outputFeature0Basic = outputsBasic.outputFeature0AsTensorBuffer
 
+                    val floatArrayBasic = outputFeature0Basic.floatArray
+
                     val resultListBasic = getBasicResultList(outputFeature0Basic.floatArray)
 
-                    Log.d("Basic Model Prediction", resultListBasic.toString())
+                    Log.d("Basic Model Prediction", "${floatArrayBasic[0]}, ${floatArrayBasic[1]}, ${floatArrayBasic[2]}, ${floatArrayBasic[3]}")
 
                     // Releases model resources if no longer used.
                     modelBasic.close()
@@ -188,7 +205,7 @@ class MainActivity : ComponentActivity() {
                     // Creates inputs for reference.
                     val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(1, 50, 6), DataType.FLOAT32)
 
-                    val inputArrayList = FloatArray(50 * 6) { 0.toFloat() }.drop(6).toMutableList()
+                    val inputArrayList = respeckLiveWindow.drop(6).toMutableList()
                     inputArrayList.addAll(
                         arrayListOf(respeckLiveData.accelX, respeckLiveData.accelY, respeckLiveData.accelZ,
                             respeckLiveData.gyro.x, respeckLiveData.gyro.y, respeckLiveData.gyro.z)
@@ -1753,22 +1770,24 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun AccountScreen(innerPadding: PaddingValues) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(colorResource(id = R.color.blue))
-                .wrapContentSize(Alignment.Center)
-                .padding(innerPadding)
-        ) {
-            Text(
-                text = "Add Post Screen",
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-                textAlign = TextAlign.Center,
-                fontSize = 20.sp
-            )
-        }
+//        val context = LocalContext.current
+        Login(this)
+//        Column(
+//            modifier = Modifier
+//                .fillMaxSize()
+//                .background(colorResource(id = R.color.blue))
+//                .wrapContentSize(Alignment.Center)
+//                .padding(innerPadding)
+//        ) {
+//            Text(
+//                text = "Add Post Screen",
+//                fontWeight = FontWeight.Bold,
+//                color = Color.White,
+//                modifier = Modifier.align(Alignment.CenterHorizontally),
+//                textAlign = TextAlign.Center,
+//                fontSize = 20.sp
+//            )
+//        }
     }
 
     @Composable

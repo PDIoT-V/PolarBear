@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "58020543693",
+    "project_id": "pdiot-v-dbe93",
+    "storage_bucket": "pdiot-v-dbe93.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:58020543693:android:dcd0285bd456c8c3e87d84",
+        "android_client_info": {
+          "package_name": "pdiot.v.polarbear"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "58020543693-7umebcuiea30onqme6udbamtnqqa2r3m.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "pdiot.v.polarbear",
+            "certificate_hash": "9dca3c0aca94523859224e10c79fa957c0366512"
+          }
+        },
+        {
+          "client_id": "58020543693-vlr41vrmfde1423f223ukkdidg630dn4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCuqFgq7OIeo_QPIUrCDlP5vGgv_jJcFhM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "58020543693-vlr41vrmfde1423f223ukkdidg630dn4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
