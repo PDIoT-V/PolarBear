@@ -88,7 +88,6 @@ import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 import pdiot.v.polarbear.login.Login
 
-
 val Context.deviceDataStore: DataStore<Preferences> by preferencesDataStore(name = "deviceSettings")
 
 class MainActivity : ComponentActivity() {
@@ -110,6 +109,8 @@ class MainActivity : ComponentActivity() {
     private var respeckLiveWindow = MutableList(50 * 6) { 0.toFloat() }
     private var respeckBasicLiveWindow = MutableList(50 * 6) { 0.toFloat() }
 
+    var respeckFirstRecord = true
+
     var respeckLastPredFlag = 0
     var respeckLastPredId = 0
     var respeckLastPredName = ""
@@ -125,11 +126,6 @@ class MainActivity : ComponentActivity() {
     val predInterval = 200
 
     private val cardsViewModel by viewModels<CardsViewModel>()
-
-    val actDb = Room.databaseBuilder(
-        applicationContext,
-        ActHistoryDb::class.java, "ActionHistory"
-    ).build()
 
     private val locationPermissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -152,6 +148,11 @@ class MainActivity : ComponentActivity() {
         locationPermissionRequest.launch(arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION))
+
+        val actDb = Room.databaseBuilder(
+            this,
+            ActHistoryDb::class.java, "ActionHistory"
+        ).build()
 
         initDeviceStates()
 
@@ -225,27 +226,77 @@ class MainActivity : ComponentActivity() {
                         3 to "Running"
                     )
 
-                    val respeckThisPredFlag = resultListBasic[0].first
-                    if (respeckThisPredFlag != respeckLastPredFlag) {
-                        val respeckThisPredId = respeckLastPredFlag + 1
+                    Log.d("Start With State", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
+
+                    if (respeckLastPredId == 0) {
+                        val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
+
+                        val lastId = sharedPreferences.getInt("lastPredictId", 0)
+
+                        if (lastId == 0) {
+                            respeckLastPredId += 1
+                            sharedPreferences.edit().putInt(
+                                "lastPredictId",
+                                respeckLastPredId
+                            ).apply()
+                        } else {
+                            respeckLastPredId = lastId + 1
+                        }
+
                         if (respeckLastPredStartTime.toInt() == 0) {
                             respeckLastPredStartTime = System.currentTimeMillis()
                         }
-                        val respeckThisPredStartTime = System.currentTimeMillis()
-                        val entityAct = ActHistoryItem(
-                            actId = respeckThisPredId,
-                            actFlag = respeckThisPredFlag,
-                            actName = actBasicMap[respeckThisPredFlag]!!,
-                            actStartTime = respeckLastPredStartTime,
-                            actEndTime =  respeckThisPredStartTime,
-                            actInterval = respeckThisPredStartTime - respeckLastPredStartTime
-                        )
 
-                        Log.d("Basic Record", entityAct.toString())
+                        Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
+                    } else {
+                        val respeckThisPredFlag = resultListBasic[0].first
+                        if (respeckThisPredFlag != respeckLastPredFlag) {
+                            val respeckThisPredStartTime = System.currentTimeMillis()
+                            val entityAct = ActHistoryItem(
+                                actId = respeckLastPredId,
+                                actFlag = respeckThisPredFlag,
+                                actName = actBasicMap[respeckThisPredFlag]!!,
+                                actStartTime = respeckLastPredStartTime,
+                                actEndTime =  respeckThisPredStartTime,
+                                actInterval = respeckThisPredStartTime - respeckLastPredStartTime
+                            )
 
-                        val historyDao = actDb.getHistoryDao()
-                        historyDao.insert(entityAct)
+                            Log.d("Basic Record", entityAct.toString())
+                            Log.d("Basic State", "$respeckLastPredId, $respeckThisPredFlag, $respeckThisPredStartTime")
+
+                            respeckLastPredId += 1
+                            respeckLastPredFlag = respeckThisPredFlag
+                            respeckLastPredStartTime = respeckThisPredStartTime
+
+                            Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
+
+                            val historyDaoR = actDb.getHistoryDao()
+                            Log.d("Basic Exist DB", historyDaoR.getAll().toString())
+                            historyDaoR.insert(entityAct)
+                        } else {
+                            val respeckThisPredStartTime = System.currentTimeMillis()
+                            val respeckThisPredInterval = respeckThisPredStartTime - respeckLastPredStartTime
+                            val entityAct = ActHistoryItem(
+                                actId = respeckLastPredId,
+                                actFlag = respeckThisPredFlag,
+                                actName = actBasicMap[respeckThisPredFlag]!!,
+                                actStartTime = respeckLastPredStartTime,
+                                actEndTime =  respeckThisPredStartTime,
+                                actInterval = respeckThisPredInterval
+                            )
+
+                            Log.d("Basic Record", entityAct.toString())
+                            Log.d("Basic State", "$respeckLastPredId, $respeckThisPredFlag, $respeckThisPredStartTime")
+
+                            Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
+
+                            val historyDaoR = actDb.getHistoryDao()
+                            Log.d("Basic Exist DB", historyDaoR.getAll().toString())
+                            historyDaoR.insert(entityAct)
+                        }
                     }
+
+
 
 
 
@@ -621,11 +672,26 @@ class MainActivity : ComponentActivity() {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            ActPredictList()
-
             val historyDao = actDb.getHistoryDao()
 
-            val terms = historyDao.queryAll().collectAsState(initial = listOf()).value
+            ActPredictList()
+
+            Row(
+                modifier = Modifier
+                    .padding(32.dp, 16.dp, 32.dp, 0.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.End) {
+                Icon(painterResource(id = R.drawable.sync), null,
+                    modifier=Modifier.clickable {
+                        Thread {
+                            actDb.getHistoryDao().clear()
+                        }.start()
+                    },
+                    tint = colorResource(id = R.color.teal),
+                )
+            }
+
+            val terms = historyDao.getAllFlow().collectAsState(initial = listOf()).value
 
             Text(text = terms.toString())
 
