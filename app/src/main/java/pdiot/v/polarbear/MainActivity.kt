@@ -13,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.annotation.RequiresApi
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -29,6 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -87,6 +90,9 @@ import pdiot.v.polarbear.utils.Utils
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 import pdiot.v.polarbear.login.Login
+import java.text.SimpleDateFormat
+import java.util.*
+import kotlin.collections.ArrayList
 
 val Context.deviceDataStore: DataStore<Preferences> by preferencesDataStore(name = "deviceSettings")
 
@@ -115,6 +121,7 @@ class MainActivity : ComponentActivity() {
     var respeckLastPredId = 0
     var respeckLastPredName = ""
     var respeckLastPredStartTime: Long = 0
+    var respeckLastPredEndTime: Long = 0
 
     var thingyLastPredState = 0
 
@@ -252,39 +259,38 @@ class MainActivity : ComponentActivity() {
                         val respeckThisPredFlag = resultListBasic[0].first
                         if (respeckThisPredFlag != respeckLastPredFlag) {
                             val respeckThisPredStartTime = System.currentTimeMillis()
-                            val respeckThisPredInterval = respeckThisPredStartTime - respeckLastPredStartTime
-                            val entityAct = ActHistoryItem(
-                                actId = respeckLastPredId,
-                                actFlag = respeckThisPredFlag,
-                                actName = actBasicMap[respeckThisPredFlag]!!,
-                                actStartTime = respeckLastPredStartTime,
-                                actEndTime =  respeckThisPredStartTime,
-                                actInterval = respeckThisPredInterval
-                            )
-
-                            Log.d("Basic Record", entityAct.toString())
-                            Log.d("Basic State", "$respeckLastPredId, $respeckThisPredFlag, $respeckThisPredStartTime")
+//                            val respeckThisPredInterval = respeckThisPredStartTime - respeckLastPredStartTime
 
                             respeckLastPredId += 1
                             respeckLastPredFlag = respeckThisPredFlag
                             respeckLastPredStartTime = respeckThisPredStartTime
 
-                            Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
-
-                            if (respeckThisPredInterval > 1000) {
-                                val historyDaoR = actDb.getHistoryDao()
-                                Log.d("Basic Exist DB", historyDaoR.getAll().toString())
-                                historyDaoR.insert(entityAct)
-
-                                val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
-                                sharedPreferences.edit().putInt(
-                                    "lastPredictId",
-                                    respeckLastPredId
-                                ).apply()
-                            }
+//                            val entityAct = ActHistoryItem(
+//                                actId = respeckLastPredId,
+//                                actFlag = respeckThisPredFlag,
+//                                actName = actBasicMap[respeckThisPredFlag]!!,
+//                                actStartTime = respeckLastPredStartTime,
+//                                actEndTime =  respeckLastPredEndTime,
+//                                actInterval = respeckThisPredInterval
+//                            )
+//
+//                            Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
+//
+//                            if (respeckThisPredInterval > 1000) {
+//                                val historyDaoR = actDb.getHistoryDao()
+//                                Log.d("Basic Exist DB", historyDaoR.getAll().toString())
+//                                historyDaoR.insert(entityAct)
+//
+//                                val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
+//                                sharedPreferences.edit().putInt(
+//                                    "lastPredictId",
+//                                    respeckLastPredId
+//                                ).apply()
+//                            }
                         } else {
                             val respeckThisPredStartTime = System.currentTimeMillis()
                             val respeckThisPredInterval = respeckThisPredStartTime - respeckLastPredStartTime
+
                             val entityAct = ActHistoryItem(
                                 actId = respeckLastPredId,
                                 actFlag = respeckThisPredFlag,
@@ -293,9 +299,6 @@ class MainActivity : ComponentActivity() {
                                 actEndTime =  respeckThisPredStartTime,
                                 actInterval = respeckThisPredInterval
                             )
-
-                            Log.d("Basic Record", entityAct.toString())
-                            Log.d("Basic State", "$respeckLastPredId, $respeckThisPredFlag, $respeckThisPredStartTime")
 
                             Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
 
@@ -312,10 +315,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-
-
-
-
 
                     if (System.currentTimeMillis() - respeckLastPredTimeBasic > predInterval) {
                         lifecycleScope.launch {
@@ -679,6 +678,7 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    @RequiresApi(Build.VERSION_CODES.O)
     @Composable
     fun HomeScreen(innerPadding: PaddingValues, viewModel: CardsViewModel, actDb: ActHistoryDb) {
 //    val mainViewModel: CountViewModel = viewModel()
@@ -695,10 +695,10 @@ class MainActivity : ComponentActivity() {
 
             Row(
                 modifier = Modifier
-                    .padding(32.dp, 16.dp, 32.dp, 0.dp)
+                    .padding(32.dp, 16.dp, 32.dp, 16.dp)
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.End) {
-                Icon(painterResource(id = R.drawable.sync), null,
+                Icon(painterResource(id = R.drawable.clearall), null,
                     modifier=Modifier.clickable {
                         Thread {
                             actDb.getHistoryDao().clear()
@@ -720,7 +720,7 @@ class MainActivity : ComponentActivity() {
             LazyColumn {
                 itemsIndexed(terms) { index, item ->
                     Card(
-                        backgroundColor = Color.White,
+                        backgroundColor = if (index == 0) {Color(0xFFa478bb)} else {Color(0xFFf7e7ff)},
                         elevation = 4.dp,
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
@@ -729,7 +729,7 @@ class MainActivity : ComponentActivity() {
                                 horizontal = 24.dp,
                                 vertical = 8.dp
                             )
-                            .height(64.dp)
+                            .height(72.dp)
                     ){
                         Row (modifier = Modifier.fillMaxSize()) {
                             Box(
@@ -738,7 +738,8 @@ class MainActivity : ComponentActivity() {
                                     .weight(2f),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(painterResource(id = actBasicInfoMap[item.actFlag]!!.icon), null)
+                                Icon(painterResource(id = actBasicInfoMap[item.actFlag]!!.icon), null,
+                                tint = if (index == 0) {Color.White} else {Color.Black})
                             }
 
                             Column(
@@ -752,8 +753,7 @@ class MainActivity : ComponentActivity() {
                                         .weight(1f),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(text = item.actName, textAlign = TextAlign.Center)
-
+                                    Text(text = item.actName, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
                                 }
 
                                 Box(
@@ -762,13 +762,12 @@ class MainActivity : ComponentActivity() {
                                         .weight(1f),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(text = "Start: $item.actStartTime End: $item.actEndTime", textAlign = TextAlign.Center)
+                                    val date = Date(item.actStartTime)
+                                    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.UK)
+                                    val startDt = sdf.format(date)
+                                    Text(text = "From $startDt", textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
                                 }
                             }
-
-
-
-
 
                             Box(
                                 modifier = Modifier
@@ -782,7 +781,7 @@ class MainActivity : ComponentActivity() {
 
                                 val intervalString = String.format("%02d:%02d", minutes, seconds)
 
-                                Text(text = intervalString, textAlign = TextAlign.Center)
+                                Text(text = intervalString, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
                             }
 
                         }
@@ -851,7 +850,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 },
-                tint = if (modelType == 1) {colorResource(id = R.color.blue)} else {colorResource(id = R.color.teal)},
+                tint = if (modelType == 1) {Color.Blue.copy(0.7f)} else {colorResource(id = R.color.teal)},
             )
         }
 
@@ -1103,12 +1102,13 @@ class MainActivity : ComponentActivity() {
 //                            }
                             .animateItemPlacement()
                             .padding(16.dp, 16.dp, 16.dp, 16.dp)) {
-                        val prog = if (modelType == 1) {actCBasicMap[index]!!} else {actCMap[index]!!}
-                        val act = if (modelType == 1) {actBasicInfoMap[actBasicMap[index]]!!} else {actInfoMap[actMap[index]]!!}
 
                         // if (index == 0) {} else {if (index == 1) else { if (index == 2) else { if (index == 3) else { [pred3I] }}} })
                         Row (modifier = Modifier.weight(8f)) {
-                            Icon(painterResource(id = if (modelType == 1) {actBasicInfoMap[actBasicMap[index]]!!.icon} else {actInfoMap[actMap[index]]!!.icon}), null)
+                            Icon(painterResource(
+                                id = if (modelType == 1) {actBasicInfoMap[actBasicMap[index]]!!.icon}
+                                else {actInfoMap[actMap[index]]!!.icon}),
+                                null)
                             Column (modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 0.dp)) {
 //                                val actionCategory = if (item.id in listOf(0, 1, 2, 3)) { "sitting" }
 //                                else { if (item.id == 4) { "standing" }
@@ -1120,7 +1120,9 @@ class MainActivity : ComponentActivity() {
 //                                else { "" } } } } } } }
 
                                 Text(text = if (modelType == 1) {actBasicInfoMap[actBasicMap[index]]!!.name} else {actInfoMap[actMap[index]]!!.name})
-                                LinearProgressIndicator(progress = if (modelType == 1) {actCBasicMap[index]!!} else {actCMap[index]!!})
+                                Spacer(modifier = Modifier.height(2.dp))
+                                LinearProgressIndicator(progress = if (modelType == 1) {actCBasicMap[index]!!} else {actCMap[index]!!},
+                                modifier = Modifier.height(3.dp), color = Color.Blue.copy(0.7f))
                             }
                         }
                         Text(text = if (modelType == 1) {"${(actCBasicMap[index]!! * 100.0).roundToInt() / 100.0}"} else {"${(actCMap[index]!! * 100.0).roundToInt() / 100.0}"}, modifier = Modifier.weight(1f))
@@ -1489,31 +1491,33 @@ class MainActivity : ComponentActivity() {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         RespeckTextField()
-                        DevicePairingButton()
                         RespeckLiveMatrix()
+                        ThingyTextField()
+                        ThingyLiveMatrix()
+                        DevicePairingButton()
                     }
                 }
 
-                Card (
-                    Modifier
-                        .constrainAs(thingyCard) { bottom.linkTo(parent.bottom, margin = 0.dp) }
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .height(IntrinsicSize.Min)
-                        .statusBarsPadding()
-                        .navigationBarsPadding()
-                        .systemBarsPadding(),
-                    elevation = cardEvaluation
-                ) {
-                    Column (
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        ThingyTextField()
-                        DevicePairingButton()
-                        ThingyLiveMatrix()
-//                    ThingyLiveChart()
-                    }
-                }
+//                Card (
+//                    Modifier
+//                        .constrainAs(thingyCard) { bottom.linkTo(parent.bottom, margin = 0.dp) }
+//                        .fillMaxWidth()
+//                        .padding(16.dp)
+//                        .height(IntrinsicSize.Min)
+//                        .statusBarsPadding()
+//                        .navigationBarsPadding()
+//                        .systemBarsPadding(),
+//                    elevation = cardEvaluation
+//                ) {
+//                    Column (
+//                        horizontalAlignment = Alignment.CenterHorizontally
+//                    ) {
+//                        ThingyTextField()
+//                        DevicePairingButton()
+//                        ThingyLiveMatrix()
+////                    ThingyLiveChart()
+//                    }
+//                }
             }
 
             Spacer(modifier = Modifier.width(32.dp))
@@ -1857,7 +1861,7 @@ class MainActivity : ComponentActivity() {
             }.collectAsState(initial = "").value
 
             SSJetPackComposeProgressButton(
-                assetColor = if (respeckOn && thingyOn) {colorResource(id = R.color.blue)} else {colorResource(id = R.color.teal)},
+                assetColor = if (respeckOn && thingyOn) {Color.Blue.copy(0.7f)} else {colorResource(id = R.color.teal)},
                 colors = ButtonDefaults.buttonColors(backgroundColor = Color.White),
                 buttonBorderStroke = BorderStroke(0.dp,
                     SolidColor(colorResource(id = R.color.grey))),
