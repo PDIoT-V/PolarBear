@@ -111,6 +111,9 @@ class MainActivity : ComponentActivity() {
     private var respeckLiveWindow = MutableList(50 * 6) { 0.toFloat() }
     private var respeckBasicLiveWindow = MutableList(50 * 6) { 0.toFloat() }
 
+    var respeckLastPredState = 0
+    var thingyLastPredState = 0
+
     var respeckLastPredTime: Long = System.currentTimeMillis()
     var respeckLastPredTimeBasic: Long = System.currentTimeMillis()
     var thingyLastPredTime: Long = System.currentTimeMillis()
@@ -207,11 +210,20 @@ class MainActivity : ComponentActivity() {
                     // Releases model resources if no longer used.
                     modelBasic.close()
 
+
+                    val respeckThisPredState = resultListBasic[0].first
+                    if (respeckThisPredState != respeckLastPredState) {
+
+                    }
+
                     if (System.currentTimeMillis() - respeckLastPredTimeBasic > predInterval) {
                         lifecycleScope.launch {
                             setPredBasic(context, resultListBasic)
                             respeckLastPredTimeBasic = System.currentTimeMillis()
                             Log.d("Last Prediction Time", "$respeckLastPredTimeBasic")
+
+                            respeckLastPredState = resultListBasic[0].first
+                            Log.d("Last Prediction State", "$respeckLastPredState")
                         }
                     }
 
