@@ -61,6 +61,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.room.Room
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
@@ -86,8 +87,6 @@ import pdiot.v.polarbear.utils.Utils
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 import pdiot.v.polarbear.login.Login
-import java.time.LocalDateTime
-import java.time.LocalTime
 
 
 val Context.deviceDataStore: DataStore<Preferences> by preferencesDataStore(name = "deviceSettings")
@@ -111,7 +110,11 @@ class MainActivity : ComponentActivity() {
     private var respeckLiveWindow = MutableList(50 * 6) { 0.toFloat() }
     private var respeckBasicLiveWindow = MutableList(50 * 6) { 0.toFloat() }
 
-    var respeckLastPredState = 0
+    var respeckLastPredFlag = 0
+    var respeckLastPredId = 0
+    var respeckLastPredName = ""
+    var respeckLastPredStartTime: Long = 0
+
     var thingyLastPredState = 0
 
     var respeckLastPredTime: Long = System.currentTimeMillis()
@@ -122,6 +125,11 @@ class MainActivity : ComponentActivity() {
     val predInterval = 200
 
     private val cardsViewModel by viewModels<CardsViewModel>()
+
+    val actDb = Room.databaseBuilder(
+        applicationContext,
+        ActHistoryDb::class.java, "ActionHistory"
+    ).build()
 
     private val locationPermissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -210,11 +218,36 @@ class MainActivity : ComponentActivity() {
                     // Releases model resources if no longer used.
                     modelBasic.close()
 
+                    val actBasicMap = mapOf(
+                        0 to "Sitting / Standing",
+                        1 to "Lying Down",
+                        2 to "Walking",
+                        3 to "Running"
+                    )
 
-                    val respeckThisPredState = resultListBasic[0].first
-                    if (respeckThisPredState != respeckLastPredState) {
+                    val respeckThisPredFlag = resultListBasic[0].first
+                    if (respeckThisPredFlag != respeckLastPredFlag) {
+                        val respeckThisPredId = respeckLastPredFlag + 1
+                        if (respeckLastPredStartTime.toInt() == 0) {
+                            respeckLastPredStartTime = System.currentTimeMillis()
+                        }
+                        val respeckThisPredStartTime = System.currentTimeMillis()
+                        val entityAct = ActHistoryItem(
+                            actId = respeckThisPredId,
+                            actFlag = respeckThisPredFlag,
+                            actName = actBasicMap[respeckThisPredFlag]!!,
+                            actStartTime = respeckLastPredStartTime,
+                            actEndTime =  respeckThisPredStartTime,
+                            actInterval = respeckThisPredStartTime - respeckLastPredStartTime
+                        )
 
+                        Log.d("Basic Record", entityAct.toString())
+
+                        val historyDao = actDb.getHistoryDao()
+                        historyDao.insert(entityAct)
                     }
+
+
 
                     if (System.currentTimeMillis() - respeckLastPredTimeBasic > predInterval) {
                         lifecycleScope.launch {
@@ -222,8 +255,8 @@ class MainActivity : ComponentActivity() {
                             respeckLastPredTimeBasic = System.currentTimeMillis()
                             Log.d("Last Prediction Time", "$respeckLastPredTimeBasic")
 
-                            respeckLastPredState = resultListBasic[0].first
-                            Log.d("Last Prediction State", "$respeckLastPredState")
+                            respeckLastPredFlag = resultListBasic[0].first
+                            Log.d("Last Prediction State", "$respeckLastPredFlag")
                         }
                     }
 
@@ -324,7 +357,7 @@ class MainActivity : ComponentActivity() {
                 // A surface container using the 'background' color from the theme
                 Surface(color = MaterialTheme.colors.background) {
 //                    DeviceIdTextField(defaultRespeckId, defaultThingyId)
-                    AppScreen(cardsViewModel)
+                    AppScreen(cardsViewModel, actDb)
                 }
             }
         }
@@ -430,7 +463,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun AppScreen(viewModel: CardsViewModel) {
+    fun AppScreen(viewModel: CardsViewModel, actDb: ActHistoryDb) {
         val navController = rememberNavController ()
         Scaffold (
             topBar = {  },
@@ -438,15 +471,15 @@ class MainActivity : ComponentActivity() {
             floatingActionButton = { FloatingPairingButton() },
             bottomBar = { BottomNavigation (navController = navController) }
         ) { paddingValues ->
-            NavigationGraph (navController = navController, innerPadding = paddingValues, viewModel)
+            NavigationGraph (navController = navController, innerPadding = paddingValues, viewModel, actDb)
         }
     }
 
     @Composable
-    fun NavigationGraph(navController: NavHostController, innerPadding: PaddingValues, viewModel: CardsViewModel) {
+    fun NavigationGraph(navController: NavHostController, innerPadding: PaddingValues, viewModel: CardsViewModel, actDb: ActHistoryDb) {
         NavHost(navController, startDestination = BottomNavItem.Home.screenRoute) {
             composable(BottomNavItem.Home.screenRoute) {
-                HomeScreen(innerPadding, viewModel)
+                HomeScreen(innerPadding, viewModel, actDb)
             }
             composable(BottomNavItem.Device.screenRoute) {
                 DeviceScreen(innerPadding)
@@ -579,7 +612,7 @@ class MainActivity : ComponentActivity() {
 
 
     @Composable
-    fun HomeScreen(innerPadding: PaddingValues, viewModel: CardsViewModel) {
+    fun HomeScreen(innerPadding: PaddingValues, viewModel: CardsViewModel, actDb: ActHistoryDb) {
 //    val mainViewModel: CountViewModel = viewModel()
 //    val seconds by mainViewModel.seconds.collectAsState(initial = "00")
 
@@ -590,7 +623,13 @@ class MainActivity : ComponentActivity() {
         ) {
             ActPredictList()
 
-            ActHistoryList(viewModel)
+            val historyDao = actDb.getHistoryDao()
+
+            val terms = historyDao.queryAll().collectAsState(initial = listOf()).value
+
+            Text(text = terms.toString())
+
+            ActHistoryList(viewModel, actDb)
         }
 
 
@@ -933,7 +972,7 @@ class MainActivity : ComponentActivity() {
 
     @OptIn(ExperimentalLifecycleComposeApi::class)
     @Composable
-    fun ActHistoryList(viewModel: CardsViewModel) {
+    fun ActHistoryList(viewModel: CardsViewModel, actDb: ActHistoryDb) {
         val cards by viewModel.cards.collectAsStateWithLifecycle()
         val expandedCardIds by viewModel.expandedCardIdsList.collectAsStateWithLifecycle()
 
