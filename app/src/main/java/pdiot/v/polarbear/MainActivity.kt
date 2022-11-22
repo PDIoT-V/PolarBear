@@ -745,11 +745,30 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .weight(6f),
-                                contentAlignment = Alignment.Center
                             ) {
-                                Text(text = item.actName, textAlign = TextAlign.Center)
-                                Text(text = item.actName, textAlign = TextAlign.Center)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .weight(1f),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = item.actName, textAlign = TextAlign.Center)
+
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .weight(1f),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = "Start: $item.actStartTime End: $item.actEndTime", textAlign = TextAlign.Center)
+                                }
                             }
+
+
+
+
 
                             Box(
                                 modifier = Modifier
