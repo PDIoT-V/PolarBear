@@ -168,7 +168,6 @@ fun Logout(context: ComponentActivity, paddingValues: PaddingValues) {
                     scope.launch {
                         setLogOut(loContext)
                     }
-//                    context.startActivity(Intent(context, LoginActivity::class.java))
                 },
                 contentPadding = PaddingValues(),
                 colors = ButtonDefaults.buttonColors(

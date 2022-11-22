@@ -78,7 +78,7 @@ import kotlinx.coroutines.launch
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import pdiot.v.polarbear.bluetooth.BluetoothSpeckService
-import pdiot.v.polarbear.login.CreateProfileCard
+import pdiot.v.polarbear.login.*
 import pdiot.v.polarbear.ml.AllModel90
 import pdiot.v.polarbear.ml.Essential4Model99
 import pdiot.v.polarbear.ui.theme.PolarBearTheme
@@ -88,8 +88,6 @@ import pdiot.v.polarbear.utils.ThingyLiveData
 import pdiot.v.polarbear.utils.Utils
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
-import pdiot.v.polarbear.login.Login
-import pdiot.v.polarbear.login.Logout
 import pdiot.v.polarbear.ml.AllModelThingy
 import java.text.SimpleDateFormat
 import java.util.*
@@ -2243,10 +2241,36 @@ class MainActivity : ComponentActivity() {
             })
         }.collectAsState(initial = false)
 
+        val isRegister = flow {
+            context.deviceDataStore.data.map {
+                it[booleanPreferencesKey("isRegister")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = false)
+
+        val isReset = flow {
+            context.deviceDataStore.data.map {
+                it[booleanPreferencesKey("isReset")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = false)
+
         if (loggedIn.value) {
             CreateProfileCard(innerPadding)
-            Logout(this, innerPadding)
-        } else { Login(this, innerPadding) }
+            Logout(this@MainActivity, innerPadding)
+        } else {
+            if (isRegister.value) { Register(this, innerPadding) }
+            else {
+                if (isReset.value) { Reset(this, innerPadding) }
+                else { Login(this, innerPadding) }
+            }
+        }
 
 //        Column(
 //            modifier = Modifier

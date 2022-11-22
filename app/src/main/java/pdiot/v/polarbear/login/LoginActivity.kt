@@ -232,7 +232,9 @@ fun Login(context: ComponentActivity, paddingValues: PaddingValues) {
                 Spacer(modifier = Modifier.padding(10.dp))
                 androidx.compose.material3.TextButton(
                     onClick = {
-                        context.startActivity(Intent(context, RegisterActivity::class.java))
+                        scope.launch {
+                            setIsRegister(loContext)
+                        }
                     }
                 ) {
                     androidx.compose.material3.Text(
@@ -245,7 +247,9 @@ fun Login(context: ComponentActivity, paddingValues: PaddingValues) {
                 Spacer(modifier = Modifier.padding(5.dp))
                 androidx.compose.material3.TextButton(
                     onClick = {
-                        context.startActivity(Intent(context, ResetActivity::class.java))
+                        scope.launch {
+                            setIsReset(loContext)
+                        }
                     }
                 ) {
                     androidx.compose.material3.Text(
@@ -263,5 +267,17 @@ fun Login(context: ComponentActivity, paddingValues: PaddingValues) {
 suspend fun setLogIn(context: Context) {
     context.deviceDataStore.edit {
         it[booleanPreferencesKey("loggedIn")] = true
+    }
+}
+
+suspend fun setIsRegister(context: Context) {
+    context.deviceDataStore.edit {
+        it[booleanPreferencesKey("isRegister")] = true
+    }
+}
+
+suspend fun setIsReset(context: Context) {
+    context.deviceDataStore.edit {
+        it[booleanPreferencesKey("isReset")] = true
     }
 }

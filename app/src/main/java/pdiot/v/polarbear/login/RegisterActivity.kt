@@ -1,5 +1,6 @@
 package pdiot.v.polarbear.login
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -32,9 +33,13 @@ import androidx.compose.ui.text.input.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.launch
 import pdiot.v.polarbear.R
+import pdiot.v.polarbear.deviceDataStore
 
 class RegisterActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,6 +60,7 @@ fun Register(context: ComponentActivity, paddingValues: PaddingValues) {
     val emailValue = remember { mutableStateOf("") }
     val passwordValue = remember { mutableStateOf("") }
     val loContext = LocalContext.current
+    val scope = rememberCoroutineScope()
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -175,7 +181,7 @@ fun Register(context: ComponentActivity, paddingValues: PaddingValues) {
                                 .addOnCompleteListener(context) { task ->
                                     if (task.isSuccessful) {
                                         Log.d("AUTH", "Register Success!")
-//                                        context.startActivity(Intent(context, MyPageActivity::class.java))
+                                        scope.launch { setNotRegister(loContext) }
                                     } else {
                                         Log.d("Auth", "Failed: ${task.exception}")
                                         Toast.makeText(loContext, "Email or password input Wrong", Toast.LENGTH_SHORT).show()
@@ -212,10 +218,10 @@ fun Register(context: ComponentActivity, paddingValues: PaddingValues) {
                     }
                 }
 
-                Spacer(modifier = Modifier.padding(10.dp))
+                Spacer(modifier = Modifier.padding(5.dp))
                 androidx.compose.material3.TextButton(
                     onClick = {
-//                        context.startActivity(Intent(context, MainActivity::class.java))
+                        scope.launch { setNotRegister(loContext) }
                     }
                 ) {
                     androidx.compose.material3.Text(
@@ -224,10 +230,13 @@ fun Register(context: ComponentActivity, paddingValues: PaddingValues) {
                         style = MaterialTheme.typography.labelLarge,
                     )
                 }
-                Spacer(modifier = Modifier.padding(5.dp))
+                Spacer(modifier = Modifier.padding(1.dp))
                 androidx.compose.material3.TextButton(
                     onClick = {
-                        context.startActivity(Intent(context, ResetActivity::class.java))
+                        scope.launch {
+                            setNotRegister(loContext)
+                            setIsReset(loContext)
+                        }
                     }
                 ) {
                     androidx.compose.material3.Text(
@@ -239,5 +248,11 @@ fun Register(context: ComponentActivity, paddingValues: PaddingValues) {
                 Spacer(modifier = Modifier.padding(20.dp))
             }
         }
+    }
+}
+
+suspend fun setNotRegister(context: Context) {
+    context.deviceDataStore.edit {
+        it[booleanPreferencesKey("isRegister")] = false
     }
 }

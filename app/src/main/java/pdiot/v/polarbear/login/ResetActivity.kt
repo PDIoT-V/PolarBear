@@ -1,5 +1,6 @@
 package pdiot.v.polarbear.login
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -34,9 +35,13 @@ import androidx.compose.ui.text.input.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.launch
 import pdiot.v.polarbear.R
+import pdiot.v.polarbear.deviceDataStore
 
 class ResetActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +61,7 @@ fun Reset(context: ComponentActivity, paddingValues: PaddingValues) {
     val auth = Firebase.auth
     val emailValue = remember { mutableStateOf("") }
     val loContext = LocalContext.current
+    val scope = rememberCoroutineScope()
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -63,6 +69,7 @@ fun Reset(context: ComponentActivity, paddingValues: PaddingValues) {
             .background(
                 color = Color.Transparent,
             )
+            .padding(paddingValues)
     ) {
         Box(
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -143,6 +150,7 @@ fun Reset(context: ComponentActivity, paddingValues: PaddingValues) {
                                 .addOnCompleteListener(context) { task ->
                                     if (task.isSuccessful) {
                                         Log.d("AUTH", "Reset Success!")
+                                        scope.launch{ setNotReset(loContext) }
                                         Toast.makeText(loContext, "Please check your email", Toast.LENGTH_SHORT).show()
                                     } else {
                                         Log.d("Auth", "Failed: ${task.exception}")
@@ -183,7 +191,10 @@ fun Reset(context: ComponentActivity, paddingValues: PaddingValues) {
                 Spacer(modifier = Modifier.padding(10.dp))
                 androidx.compose.material3.TextButton(
                     onClick = {
-                        context.startActivity(Intent(context, RegisterActivity::class.java))
+                        scope.launch{
+                            setNotReset(loContext)
+                            setIsRegister(loContext)
+                        }
                     }
                 ) {
                     androidx.compose.material3.Text(
@@ -195,5 +206,11 @@ fun Reset(context: ComponentActivity, paddingValues: PaddingValues) {
                 Spacer(modifier = Modifier.padding(20.dp))
             }
         }
+    }
+}
+
+suspend fun setNotReset(context: Context) {
+    context.deviceDataStore.edit {
+        it[booleanPreferencesKey("isReset")] = false
     }
 }
