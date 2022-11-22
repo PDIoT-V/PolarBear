@@ -78,6 +78,7 @@ import kotlinx.coroutines.launch
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import pdiot.v.polarbear.bluetooth.BluetoothSpeckService
+import pdiot.v.polarbear.login.CreateProfileCard
 import pdiot.v.polarbear.ml.AllModel90
 import pdiot.v.polarbear.ml.Essential4Model99
 import pdiot.v.polarbear.ui.theme.PolarBearTheme
@@ -88,6 +89,7 @@ import pdiot.v.polarbear.utils.Utils
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 import pdiot.v.polarbear.login.Login
+import pdiot.v.polarbear.login.Logout
 import pdiot.v.polarbear.ml.AllModelThingy
 import java.text.SimpleDateFormat
 import java.util.*
@@ -809,7 +811,7 @@ class MainActivity : ComponentActivity() {
                                     val date = Date(item.actStartTime)
                                     val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.UK)
                                     val startDt = sdf.format(date)
-                                    Text(text = "From $startDt", textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
+                                    Text(text = startDt, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
                                 }
                             }
 
@@ -2229,8 +2231,23 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun AccountScreen(innerPadding: PaddingValues) {
-//        val context = LocalContext.current
-        Login(this)
+        val context = LocalContext.current
+
+        val loggedIn = flow {
+            context.deviceDataStore.data.map {
+                it[booleanPreferencesKey("loggedIn")]
+            }.collect(collector = {
+                if (it != null) {
+                    this.emit(it)
+                }
+            })
+        }.collectAsState(initial = false)
+
+        if (loggedIn.value) {
+            CreateProfileCard(innerPadding)
+            Logout(this, innerPadding)
+        } else { Login(this, innerPadding) }
+
 //        Column(
 //            modifier = Modifier
 //                .fillMaxSize()

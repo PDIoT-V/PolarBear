@@ -67,6 +67,23 @@
             android:enabled="true"
             android:exported="false" />
 
+        <activity
+            android:name=".login.LoginActivity"
+            android:theme="@style/Theme.AppCompat.Light">
+        </activity>
+        <activity
+            android:name=".login.RegisterActivity"
+            android:theme="@style/Theme.AppCompat.Light">
+        </activity>
+        <activity
+            android:name=".login.ResetActivity"
+            android:theme="@style/Theme.AppCompat.Light">
+        </activity>
+        <activity
+            android:name=".login.MyPageActivity"
+            android:theme="@style/Theme.AppCompat.Light">
+        </activity>
+
     </application>
 
 </manifest>

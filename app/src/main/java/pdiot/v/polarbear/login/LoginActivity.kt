@@ -1,5 +1,6 @@
 package pdiot.v.polarbear.login
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -36,25 +37,30 @@ import com.google.firebase.ktx.Firebase
 import androidx.compose.material.*
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import kotlinx.coroutines.launch
 import pdiot.v.polarbear.R
+import pdiot.v.polarbear.deviceDataStore
 
-//class LoginActivity : ComponentActivity() {
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState);
-//        setContent {
-//            Scaffold (
-//                content = {
-//                    Login(this)
-//                }
-//            )
-//        }
-//    }
-//}
+class LoginActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState);
+        setContent {
+            Scaffold (
+                content = {
+                    Login(this, it)
+                }
+            )
+        }
+    }
+}
 
 @Composable
-fun Login(context: ComponentActivity) {
+fun Login(context: ComponentActivity, paddingValues: PaddingValues) {
     val auth = Firebase.auth
     val loContext = LocalContext.current
+    val scope = rememberCoroutineScope()
     val emailValue = remember { mutableStateOf("") }
     val passwordValue = remember { mutableStateOf("") }
     Box(
@@ -181,6 +187,10 @@ fun Login(context: ComponentActivity) {
                                 .addOnCompleteListener(context) { task ->
                                     if (task.isSuccessful) {
                                         Log.d("AUTH", "Login Success!")
+
+                                        scope.launch {
+                                            setLogIn(loContext)
+                                        }
 //                                        context.startActivity(Intent(context, MyPageActivity::class.java))
                                     } else {
                                         Log.d("Auth", "Failed: ${task.exception}")
@@ -222,7 +232,7 @@ fun Login(context: ComponentActivity) {
                 Spacer(modifier = Modifier.padding(10.dp))
                 androidx.compose.material3.TextButton(
                     onClick = {
-//                        context.startActivity(Intent(context, RegisterActivity::class.java))
+                        context.startActivity(Intent(context, RegisterActivity::class.java))
                     }
                 ) {
                     androidx.compose.material3.Text(
@@ -235,7 +245,7 @@ fun Login(context: ComponentActivity) {
                 Spacer(modifier = Modifier.padding(5.dp))
                 androidx.compose.material3.TextButton(
                     onClick = {
-//                        context.startActivity(Intent(context, ResetActivity::class.java))
+                        context.startActivity(Intent(context, ResetActivity::class.java))
                     }
                 ) {
                     androidx.compose.material3.Text(
@@ -247,5 +257,11 @@ fun Login(context: ComponentActivity) {
                 Spacer(modifier = Modifier.padding(20.dp))
             }
         }
+    }
+}
+
+suspend fun setLogIn(context: Context) {
+    context.deviceDataStore.edit {
+        it[booleanPreferencesKey("loggedIn")] = true
     }
 }

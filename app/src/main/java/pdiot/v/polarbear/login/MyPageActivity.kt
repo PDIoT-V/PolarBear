@@ -1,5 +1,6 @@
 package pdiot.v.polarbear.login
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -33,24 +34,29 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat.startActivity
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.launch
 import pdiot.v.polarbear.R
+import pdiot.v.polarbear.deviceDataStore
 
-//class MyPageActivity : ComponentActivity() {
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState);
-//        setContent {
-//            Scaffold (
-//                content = {
-//                    CreateProfileCard()
-//                    Logout(this)
-//                }
-//            )
-//        }
-//    }
-//}
+class MyPageActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState);
+        setContent {
+            Scaffold (
+                content = {
+                    CreateProfileCard(it)
+                    Logout(this, it)
+                }
+            )
+        }
+    }
+}
 
 @Composable
 private fun CreateImageProfile(modifier: Modifier = Modifier) {
@@ -103,7 +109,7 @@ private fun CreateInfo() {
 
 
 @Composable
-fun CreateProfileCard() {
+fun CreateProfileCard(paddingValues: PaddingValues) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -135,7 +141,9 @@ fun CreateProfileCard() {
 }
 
 @Composable
-fun Logout(context: ComponentActivity) {
+fun Logout(context: ComponentActivity, paddingValues: PaddingValues) {
+    val scope = rememberCoroutineScope()
+    val loContext = LocalContext.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -157,6 +165,9 @@ fun Logout(context: ComponentActivity) {
                     .padding(start = 32.dp, end = 32.dp),
                 onClick = {
                     Firebase.auth.signOut()
+                    scope.launch {
+                        setLogOut(loContext)
+                    }
 //                    context.startActivity(Intent(context, LoginActivity::class.java))
                 },
                 contentPadding = PaddingValues(),
@@ -185,5 +196,13 @@ fun Logout(context: ComponentActivity) {
                 }
             }
         }
+    }
+}
+
+
+
+suspend fun setLogOut(context: Context) {
+    context.deviceDataStore.edit {
+        it[booleanPreferencesKey("loggedIn")] = false
     }
 }

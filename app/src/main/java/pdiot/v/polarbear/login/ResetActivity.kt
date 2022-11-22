@@ -38,21 +38,21 @@ import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import pdiot.v.polarbear.R
 
-//class ResetActivity : ComponentActivity() {
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState);
-//        setContent {
-//            Scaffold (
-//                content = {
-//                    Reset(this)
-//                }
-//            )
-//        }
-//    }
-//}
+class ResetActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState);
+        setContent {
+            Scaffold (
+                content = {
+                    Reset(this, it)
+                }
+            )
+        }
+    }
+}
 
 @Composable
-fun Reset(context: ComponentActivity) {
+fun Reset(context: ComponentActivity, paddingValues: PaddingValues) {
     val auth = Firebase.auth
     val emailValue = remember { mutableStateOf("") }
     val loContext = LocalContext.current
@@ -183,7 +183,7 @@ fun Reset(context: ComponentActivity) {
                 Spacer(modifier = Modifier.padding(10.dp))
                 androidx.compose.material3.TextButton(
                     onClick = {
-//                        context.startActivity(Intent(context, RegisterActivity::class.java))
+                        context.startActivity(Intent(context, RegisterActivity::class.java))
                     }
                 ) {
                     androidx.compose.material3.Text(

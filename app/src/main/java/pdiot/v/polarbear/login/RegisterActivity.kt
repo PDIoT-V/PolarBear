@@ -36,21 +36,21 @@ import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import pdiot.v.polarbear.R
 
-//class RegisterActivity : ComponentActivity() {
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState);
-//        setContent {
-//            Scaffold (
-//                content = {
-//                    Register(this)
-//                }
-//            )
-//        }
-//    }
-//}
+class RegisterActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState);
+        setContent {
+            Scaffold (
+                content = {
+                    Register(this, it)
+                }
+            )
+        }
+    }
+}
 
 @Composable
-fun Register(context: ComponentActivity) {
+fun Register(context: ComponentActivity, paddingValues: PaddingValues) {
     val auth = Firebase.auth
     val emailValue = remember { mutableStateOf("") }
     val passwordValue = remember { mutableStateOf("") }
@@ -227,7 +227,7 @@ fun Register(context: ComponentActivity) {
                 Spacer(modifier = Modifier.padding(5.dp))
                 androidx.compose.material3.TextButton(
                     onClick = {
-//                        context.startActivity(Intent(context, ResetActivity::class.java))
+                        context.startActivity(Intent(context, ResetActivity::class.java))
                     }
                 ) {
                     androidx.compose.material3.Text(
