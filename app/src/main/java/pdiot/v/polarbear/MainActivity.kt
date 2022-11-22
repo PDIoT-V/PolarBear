@@ -717,12 +717,7 @@ class MainActivity : ComponentActivity() {
                 3 to ActionInfo(10, "Running", R.drawable.running40)
             )
 
-            LazyColumn (
-                modifier = Modifier.padding(
-                    horizontal = 8.dp,
-                    vertical = 16.dp
-                )
-                    ) {
+            LazyColumn {
                 itemsIndexed(terms) { index, item ->
                     Card(
                         backgroundColor = Color.White,
@@ -736,19 +731,41 @@ class MainActivity : ComponentActivity() {
                             )
                             .height(64.dp)
                     ){
-                        Row {
-                            Icon(painterResource(id = actBasicInfoMap[item.actFlag]!!.icon), null, modifier = Modifier.weight(2f))
-                            Text(text = item.actName, modifier = Modifier.weight(4f), textAlign = TextAlign.Center,)
-                            val totalTime = item.actInterval / 1000
-                            val minutes = (totalTime % 3600) / 60
-                            val seconds = totalTime % 60
-
-                            val intervalString = String.format("%02d:%02d", minutes, seconds)
-
-                            Column (verticalArrangement = Arrangement.Center,
-                                horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(text = intervalString, modifier = Modifier.weight(2f), textAlign = TextAlign.Center)
+                        Row (modifier = Modifier.fillMaxSize()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .weight(2f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(painterResource(id = actBasicInfoMap[item.actFlag]!!.icon), null)
                             }
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .weight(6f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = item.actName, textAlign = TextAlign.Center)
+                                Text(text = item.actName, textAlign = TextAlign.Center)
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .weight(2f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val totalTime = item.actInterval / 1000
+                                val minutes = (totalTime % 3600) / 60
+                                val seconds = totalTime % 60
+
+                                val intervalString = String.format("%02d:%02d", minutes, seconds)
+
+                                Text(text = intervalString, textAlign = TextAlign.Center)
+                            }
+
                         }
                     }
                 }
