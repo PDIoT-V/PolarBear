@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,7 +30,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -90,6 +88,7 @@ import pdiot.v.polarbear.utils.Utils
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 import pdiot.v.polarbear.login.Login
+import pdiot.v.polarbear.ml.AllModelThingy
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.collections.ArrayList
@@ -123,14 +122,19 @@ class MainActivity : ComponentActivity() {
     var respeckLastPredStartTime: Long = 0
     var respeckLastPredEndTime: Long = 0
 
+    private var thingyLiveWindow = MutableList(50 * 6) { 0.toFloat() }
+
+    private var thingyIsRunning = false
+
+    var respeckResultList : FloatArray = FloatArray(4)
+
     var thingyLastPredState = 0
 
     var respeckLastPredTime: Long = System.currentTimeMillis()
     var respeckLastPredTimeBasic: Long = System.currentTimeMillis()
     var thingyLastPredTime: Long = System.currentTimeMillis()
-    var thingyLastPredTimeBasic: Long = System.currentTimeMillis()
 
-    val predInterval = 200
+    val predInterval = 2000
 
     private val cardsViewModel by viewModels<CardsViewModel>()
 
@@ -353,17 +357,21 @@ class MainActivity : ComponentActivity() {
                     val outputFeature0 = outputs.outputFeature0AsTensorBuffer
 
                     val resultList = getResultList(outputFeature0.floatArray)
+                    respeckResultList = outputFeature0.floatArray
 
                     Log.d("Model Prediction", resultList.toString())
 
                     // Releases model resources if no longer used.
                     model.close()
 
-                    if (System.currentTimeMillis() - respeckLastPredTime > predInterval) {
-                        lifecycleScope.launch {
-                            setPred(context, resultList)
-                            respeckLastPredTime = System.currentTimeMillis()
-                            Log.d("Last Prediction Time", "$respeckLastPredTime")
+                    if (!thingyIsRunning) {
+                        if (System.currentTimeMillis() - respeckLastPredTime > predInterval) {
+                            lifecycleScope.launch {
+
+                                setPred(context, resultList)
+                                respeckLastPredTime = System.currentTimeMillis()
+                                Log.d("Last Prediction Time", "$respeckLastPredTime")
+                            }
                         }
                     }
                 }
@@ -388,7 +396,32 @@ class MainActivity : ComponentActivity() {
                         intent.getSerializableExtra(Constants.THINGY_LIVE_DATA) as ThingyLiveData
                     }
 
+                    thingyIsRunning = true
+
                     Log.d("Live", "onReceive: thingyLiveData = $thingyLiveData")
+
+                    val modelT = AllModelThingy.newInstance(context)
+                    // Creates inputs for reference.
+
+                    val inputFeatureT = TensorBuffer.createFixedSize(intArrayOf(1, 50, 6), DataType.FLOAT32)
+
+                    Log.d("Live Window Before Drop", "${thingyLiveWindow}, ${thingyLiveWindow.size}")
+                    thingyLiveWindow = thingyLiveWindow.drop(6).toMutableList()
+
+                    Log.d("Live Window", "${thingyLiveWindow}, ${thingyLiveWindow.size}")
+                    val inputArrayT = thingyLiveWindow
+                    inputArrayT.addAll(
+                        arrayListOf(thingyLiveData.accelX, thingyLiveData.accelY, thingyLiveData.accelZ,
+                            thingyLiveData.gyro.x, thingyLiveData.gyro.y, thingyLiveData.gyro.z)
+                    )
+                    inputFeatureT.loadArray(inputArrayT.toFloatArray())
+                    // Runs model inference and gets result.
+
+                    val outputsT = modelT.process(inputFeatureT)
+                    val outputFeatureT = outputsT.outputFeature0AsTensorBuffer
+//                    val resultListT = getResultList(outputFeatureT.floatArray)
+
+                    val finalResultListT = getResultList(comparePrediction(outputFeatureT.floatArray, respeckResultList))
 
                     lifecycleScope.launch {
                         setThingyOn(context)
@@ -405,6 +438,11 @@ class MainActivity : ComponentActivity() {
                             "${thingyLiveData.mag.x}",
                             "${thingyLiveData.mag.y}",
                             "${thingyLiveData.mag.z}")
+                        if (System.currentTimeMillis() - thingyLastPredTime > predInterval) {
+                            setPred(context, finalResultListT)
+                            thingyLastPredTime = System.currentTimeMillis()
+                            Log.d("Last Prediction Time", "$thingyLastPredTime")
+                        }
                     }
                 }
             }
@@ -508,9 +546,16 @@ class MainActivity : ComponentActivity() {
         return resultMap.toList().sortedBy { (key, value) -> value }.reversed()
     }
 
+    private fun comparePrediction(aR:FloatArray, aT:FloatArray) : FloatArray{
+        val resultList : MutableList<Float> = mutableListOf()
+        if (aR.isNotEmpty() && aT.isNotEmpty()){
+            for (i in 0 .. aR.size-1){
+                resultList.add((aR[i]+aT[i])/2)
+            }
+        }
+        return resultList.toFloatArray()
 
-
-
+    }
 
     @Composable
     fun stateModelType(): State<Int> {
