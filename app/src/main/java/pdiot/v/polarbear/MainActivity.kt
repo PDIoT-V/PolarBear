@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
 
     private var thingyIsRunning = false
 
-    var respeckResultList : FloatArray = FloatArray(4)
+    var respeckResultList : FloatArray = FloatArray(14)
 
     var thingyLastPredState = 0
 
@@ -134,7 +134,7 @@ class MainActivity : ComponentActivity() {
     var respeckLastPredTimeBasic: Long = System.currentTimeMillis()
     var thingyLastPredTime: Long = System.currentTimeMillis()
 
-    val predInterval = 2000
+    val predInterval = 1000
 
     private val cardsViewModel by viewModels<CardsViewModel>()
 
@@ -367,7 +367,6 @@ class MainActivity : ComponentActivity() {
                     if (!thingyIsRunning) {
                         if (System.currentTimeMillis() - respeckLastPredTime > predInterval) {
                             lifecycleScope.launch {
-
                                 setPred(context, resultList)
                                 respeckLastPredTime = System.currentTimeMillis()
                                 Log.d("Last Prediction Time", "$respeckLastPredTime")
