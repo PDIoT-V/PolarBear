@@ -64,10 +64,7 @@ import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSButtonState
 import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSButtonType
 import com.simform.ssjetpackcomposeprogressbuttonlibrary.SSJetPackComposeProgressButton
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
@@ -82,6 +79,8 @@ import pdiot.v.polarbear.utils.Utils
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 import pdiot.v.polarbear.login.Login
+import java.time.LocalDateTime
+import java.time.LocalTime
 
 
 val Context.deviceDataStore: DataStore<Preferences> by preferencesDataStore(name = "deviceSettings")
@@ -102,8 +101,15 @@ class MainActivity : ComponentActivity() {
     private var defaultRespeckId = "E7:6E:9C:24:55:9A"
     private var defaultThingyId = "DF:80:AA:B3:5A:F7"
 
-    private var respeckLiveWindow = FloatArray(50 * 6) { 0.toFloat() }
-    private var respeckBasicLiveWindow = FloatArray(50 * 6) { 0.toFloat() }
+    private var respeckLiveWindow = MutableList(50 * 6) { 0.toFloat() }
+    private var respeckBasicLiveWindow = MutableList(50 * 6) { 0.toFloat() }
+
+    var respeckLastPredTime: Long = System.currentTimeMillis()
+    var respeckLastPredTimeBasic: Long = System.currentTimeMillis()
+    var thingyLastPredTime: Long = System.currentTimeMillis()
+    var thingyLastPredTimeBasic: Long = System.currentTimeMillis()
+
+    val predInterval = 200
 
     private val locationPermissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -163,21 +169,17 @@ class MainActivity : ComponentActivity() {
                     // Creates inputs for reference.
                     val inputFeature0Basic = TensorBuffer.createFixedSize(intArrayOf(1, 50, 6), DataType.FLOAT32)
 
-                    val respeckBasicLiveList = respeckBasicLiveWindow.toMutableList()
+                    Log.d("Basic Live Window Before Drop", "${respeckBasicLiveWindow}, ${respeckBasicLiveWindow.size}")
 
-                    for (i in 0..5) {
-                        respeckBasicLiveList.removeFirst()
-                    }
+                    respeckBasicLiveWindow = respeckBasicLiveWindow.drop(6).toMutableList()
 
-                    respeckBasicLiveWindow = respeckBasicLiveList.toFloatArray()
-
-                    val inputArrayListBasic = respeckBasicLiveWindow.toMutableList()
-                    Log.d("Basic Live Window", inputArrayListBasic.toString())
+                    val inputArrayListBasic = respeckBasicLiveWindow
+                    Log.d("Basic Live Window", "${inputArrayListBasic}, ${inputArrayListBasic.size}")
                     inputArrayListBasic.addAll(
                         arrayListOf(respeckLiveData.accelX, respeckLiveData.accelY, respeckLiveData.accelZ,
                             respeckLiveData.gyro.x, respeckLiveData.gyro.y, respeckLiveData.gyro.z)
                     )
-                    Log.d("Basic Input Array", inputArrayListBasic.toString())
+                    Log.d("Basic Input Array", "${inputArrayListBasic}, ${inputArrayListBasic.size}")
 
                     val inputArrayBasic = inputArrayListBasic.toFloatArray()
 
@@ -196,20 +198,31 @@ class MainActivity : ComponentActivity() {
                     // Releases model resources if no longer used.
                     modelBasic.close()
 
-                    lifecycleScope.launch {
-                        setPredBasic(context, resultListBasic)
+                    if (System.currentTimeMillis() - respeckLastPredTimeBasic > predInterval) {
+                        lifecycleScope.launch {
+                            setPredBasic(context, resultListBasic)
+                            respeckLastPredTimeBasic = System.currentTimeMillis()
+                            Log.d("Last Prediction Time", "$respeckLastPredTimeBasic")
+                        }
                     }
+
 
                     val model = AllModel90.newInstance(context)
 
                     // Creates inputs for reference.
                     val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(1, 50, 6), DataType.FLOAT32)
 
-                    val inputArrayList = respeckLiveWindow.drop(6).toMutableList()
+                    Log.d("Live Window Before Drop", "${respeckLiveWindow}, ${respeckLiveWindow.size}")
+
+                    respeckLiveWindow = respeckLiveWindow.drop(6).toMutableList()
+
+                    val inputArrayList = respeckLiveWindow
+                    Log.d("Live Window", "${inputArrayList}, ${inputArrayList.size}")
                     inputArrayList.addAll(
                         arrayListOf(respeckLiveData.accelX, respeckLiveData.accelY, respeckLiveData.accelZ,
                             respeckLiveData.gyro.x, respeckLiveData.gyro.y, respeckLiveData.gyro.z)
                     )
+                    Log.d("Input Array", "${inputArrayList}, ${inputArrayList.size}")
                     val inputArray = inputArrayList.toFloatArray()
 
                     inputFeature0.loadArray(inputArray)
@@ -225,8 +238,12 @@ class MainActivity : ComponentActivity() {
                     // Releases model resources if no longer used.
                     model.close()
 
-                    lifecycleScope.launch {
-                        setPred(context, resultList)
+                    if (System.currentTimeMillis() - respeckLastPredTime > predInterval) {
+                        lifecycleScope.launch {
+                            setPred(context, resultList)
+                            respeckLastPredTime = System.currentTimeMillis()
+                            Log.d("Last Prediction Time", "$respeckLastPredTime")
+                        }
                     }
                 }
             }
@@ -348,6 +365,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    fun getBasicResultList(arr: FloatArray): List<Pair<Int, Float>> {
+        val resultMap = mutableMapOf<Int, Float>()
+
+        for (i in 0..3) {
+            resultMap[i] = arr[i]
+        }
+
+        return resultMap.toList().sortedBy { (key, value) -> value }.reversed()
+    }
+
     fun getResultList(arr: FloatArray): List<Pair<Int, Float>> {
         val resultMap = mutableMapOf<Int, Float>()
 
@@ -358,15 +385,9 @@ class MainActivity : ComponentActivity() {
         return resultMap.toList().sortedBy { (key, value) -> value }.reversed()
     }
 
-    fun getBasicResultList(arr: FloatArray): List<Pair<Int, Float>> {
-        val resultMap = mutableMapOf<Int, Float>()
 
-        for (i in 0..3) {
-            resultMap[i] = arr[i]
-        }
 
-        return resultMap.toList().sortedBy { (key, value) -> value }.reversed()
-    }
+
 
     @Composable
     fun stateModelType(): State<Int> {
@@ -556,7 +577,7 @@ class MainActivity : ComponentActivity() {
                         this.emit(it)
                     }
                 }
-            }.collectAsState(initial = 0).value
+            }.collectAsState(initial = 1).value
 
             Row(
                 modifier = Modifier
