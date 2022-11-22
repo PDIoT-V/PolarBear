@@ -1,6 +1,7 @@
 package pdiot.v.polarbear
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -11,20 +12,23 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.compose.animation.*
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -43,10 +47,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.constraintlayout.compose.ConstraintLayout
+import androidx.core.content.ContextCompat
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.ExperimentalLifecycleComposeApi
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
@@ -110,6 +117,8 @@ class MainActivity : ComponentActivity() {
     var thingyLastPredTimeBasic: Long = System.currentTimeMillis()
 
     val predInterval = 200
+
+    private val cardsViewModel by viewModels<CardsViewModel>()
 
     private val locationPermissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -296,12 +305,14 @@ class MainActivity : ComponentActivity() {
         val thingyHandler = Handler(thingyLooper)
         this.registerReceiver(thingyReceiver, thingyFilterTest, null, thingyHandler)
 
+
+
         setContent {
             PolarBearTheme {
                 // A surface container using the 'background' color from the theme
                 Surface(color = MaterialTheme.colors.background) {
 //                    DeviceIdTextField(defaultRespeckId, defaultThingyId)
-                    AppScreen()
+                    AppScreen(cardsViewModel)
                 }
             }
         }
@@ -407,7 +418,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun AppScreen() {
+    fun AppScreen(viewModel: CardsViewModel) {
         val navController = rememberNavController ()
         Scaffold (
             topBar = {  },
@@ -415,15 +426,15 @@ class MainActivity : ComponentActivity() {
             floatingActionButton = { FloatingPairingButton() },
             bottomBar = { BottomNavigation (navController = navController) }
         ) { paddingValues ->
-            NavigationGraph (navController = navController, innerPadding = paddingValues)
+            NavigationGraph (navController = navController, innerPadding = paddingValues, viewModel)
         }
     }
 
     @Composable
-    fun NavigationGraph(navController: NavHostController, innerPadding: PaddingValues) {
+    fun NavigationGraph(navController: NavHostController, innerPadding: PaddingValues, viewModel: CardsViewModel) {
         NavHost(navController, startDestination = BottomNavItem.Home.screenRoute) {
             composable(BottomNavItem.Home.screenRoute) {
-                HomeScreen(innerPadding)
+                HomeScreen(innerPadding, viewModel)
             }
             composable(BottomNavItem.Device.screenRoute) {
                 DeviceScreen(innerPadding)
@@ -554,325 +565,23 @@ class MainActivity : ComponentActivity() {
         object Account: BottomNavItem("Account", R.drawable.person,"account_route")
     }
 
-    @OptIn(ExperimentalFoundationApi::class, ExperimentalAnimationApi::class)
+
     @Composable
-    fun HomeScreen(innerPadding: PaddingValues) {
+    fun HomeScreen(innerPadding: PaddingValues, viewModel: CardsViewModel) {
 //    val mainViewModel: CountViewModel = viewModel()
 //    val seconds by mainViewModel.seconds.collectAsState(initial = "00")
-
-        val context = LocalContext.current
-        val scope = rememberCoroutineScope()
 
         Column (
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            ActPredictList()
 
-            val modelType = flow<Int> {
-                context.deviceDataStore.data.map {
-                    it[intPreferencesKey("modelType")]
-                }.collect {
-                    if (it != null) {
-                        this.emit(it)
-                    }
-                }
-            }.collectAsState(initial = 1).value
+            ActHistoryList(viewModel)
+        }
 
-            Row(
-                modifier = Modifier
-                    .padding(32.dp, 16.dp, 32.dp, 0.dp)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.End) {
-                Icon(painterResource(id = R.drawable.chart), null,
-                    modifier=Modifier.clickable {
-                        scope.launch {
-                            if (modelType == 0) {
-                                setModelType(context, 1)
-                            } else {
-                                if (modelType == 1) {
-                                    setModelType(context, 0)
-                                }
-                            }
-                        }
-                    },
-                    tint = if (modelType == 1) {colorResource(id = R.color.blue)} else {colorResource(id = R.color.teal)},
-                )
-            }
 
-            Card (
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)) {
-                val actInfoMap = mapOf(
-                    0 to ActionInfo(11, "Climbing stairs", R.drawable.walking),
-                    1 to ActionInfo(12, "Descending stairs", R.drawable.walking),
-                    2 to ActionInfo(3, "Desk work", R.drawable.sitting),
-                    3 to ActionInfo(0, "Sitting", R.drawable.sitting),
-                    4 to ActionInfo(1, "Sitting Bent Forward", R.drawable.sitting),
-                    5 to ActionInfo(2, "Sitting Bent Backward", R.drawable.sitting),
-                    6 to ActionInfo(4, "Standing", R.drawable.standing),
-                    7 to ActionInfo(5, "Lying on left", R.drawable.lying),
-                    8 to ActionInfo(8, "Lying on back", R.drawable.lying),
-                    9 to ActionInfo(7, "Lying on stomach", R.drawable.lying),
-                    10 to ActionInfo(6, "Lying on right", R.drawable.lying),
-                    11 to ActionInfo(13, "Movement", R.drawable.movement),
-                    12 to ActionInfo(10, "Running", R.drawable.running),
-                    13 to ActionInfo(9, "Walking", R.drawable.walking),
-                )
-
-                val actBasicInfoMap = mapOf(
-                    0 to ActionInfo(0, "Sitting / Standing", R.drawable.sitting),
-                    1 to ActionInfo(5, "Lying Down", R.drawable.lying),
-                    2 to ActionInfo(9, "Walking", R.drawable.walking),
-                    3 to ActionInfo(10, "Running", R.drawable.running)
-                )
-
-                val pred0I = flow<Int> {
-                    context.deviceDataStore.data.map {
-                        it[intPreferencesKey("pred0I")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0).value
-
-                val pred0C = flow<Float> {
-                    context.deviceDataStore.data.map {
-                        it[floatPreferencesKey("pred0C")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0.0).value.toFloat()
-
-                val pred1I = flow<Int> {
-                    context.deviceDataStore.data.map {
-                        it[intPreferencesKey("pred1I")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0).value
-
-                val pred1C = flow<Float> {
-                    context.deviceDataStore.data.map {
-                        it[floatPreferencesKey("pred1C")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0.0).value.toFloat()
-
-                val pred2I = flow<Int> {
-                    context.deviceDataStore.data.map {
-                        it[intPreferencesKey("pred2I")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0).value
-
-                val pred2C = flow<Float> {
-                    context.deviceDataStore.data.map {
-                        it[floatPreferencesKey("pred2C")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0.0).value.toFloat()
-
-                val pred3I = flow<Int> {
-                    context.deviceDataStore.data.map {
-                        it[intPreferencesKey("pred3I")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0).value
-
-                val pred3C = flow<Float> {
-                    context.deviceDataStore.data.map {
-                        it[floatPreferencesKey("pred3C")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0.0).value.toFloat()
-
-                val actList by remember {
-                    mutableStateOf(listOf(
-                        pred0I,
-                        pred1I,
-                        pred2I,
-                        pred3I
-                    ))
-                }
-
-                val actMap = mapOf(
-                    0 to pred0I,
-                    1 to pred1I,
-                    2 to pred2I,
-                    3 to pred3I
-                )
-
-                val actCMap = mapOf(
-                    0 to pred0C,
-                    1 to pred1C,
-                    2 to pred2C,
-                    3 to pred3C
-                )
-
-                val predBasic0I = flow<Int> {
-                    context.deviceDataStore.data.map {
-                        it[intPreferencesKey("predBasic0I")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0).value
-
-                val predBasic0C = flow<Float> {
-                    context.deviceDataStore.data.map {
-                        it[floatPreferencesKey("predBasic0C")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0.0).value.toFloat()
-
-                val predBasic1I = flow<Int> {
-                    context.deviceDataStore.data.map {
-                        it[intPreferencesKey("predBasic1I")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0).value
-
-                val predBasic1C = flow<Float> {
-                    context.deviceDataStore.data.map {
-                        it[floatPreferencesKey("predBasic1C")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0.0).value.toFloat()
-
-                val predBasic2I = flow<Int> {
-                    context.deviceDataStore.data.map {
-                        it[intPreferencesKey("predBasic2I")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0).value
-
-                val predBasic2C = flow<Float> {
-                    context.deviceDataStore.data.map {
-                        it[floatPreferencesKey("predBasic2C")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0.0).value.toFloat()
-
-                val predBasic3I = flow<Int> {
-                    context.deviceDataStore.data.map {
-                        it[intPreferencesKey("predBasic3I")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0).value
-
-                val predBasic3C = flow<Float> {
-                    context.deviceDataStore.data.map {
-                        it[floatPreferencesKey("predBasic3C")]
-                    }.collect {
-                        if (it != null) {
-                            this.emit(it)
-                        }
-                    }
-                }.collectAsState(initial = 0.0).value.toFloat()
-
-                val actBasicList by remember {
-                    mutableStateOf(listOf(
-                        predBasic0I,
-                        predBasic1I,
-                        predBasic2I,
-                        predBasic3I
-                    ))
-                }
-
-                val actBasicMap = mapOf(
-                    0 to predBasic0I,
-                    1 to predBasic1I,
-                    2 to predBasic2I,
-                    3 to predBasic3I
-                )
-
-                val actCBasicMap = mapOf(
-                    0 to predBasic0C,
-                    1 to predBasic1C,
-                    2 to predBasic2C,
-                    3 to predBasic3C
-                )
-
-//            Text(text = "$pred0I, $pred1I, $pred2I, $pred3I")
-
-                LazyColumn {
-                    itemsIndexed(if (modelType == 1) {actBasicList} else {actList}) { index, _ ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-//                            .clickable {
-//                                actionList = actionList
-//                                    .shuffled()
-//                                    .slice(0..4)
-//                            }
-                                .animateItemPlacement()
-                                .padding(16.dp, 16.dp, 16.dp, 16.dp)) {
-                            val prog = if (modelType == 1) {actCBasicMap[index]!!} else {actCMap[index]!!}
-                            val act = if (modelType == 1) {actBasicInfoMap[actBasicMap[index]]!!} else {actInfoMap[actMap[index]]!!}
-
-                            // if (index == 0) {} else {if (index == 1) else { if (index == 2) else { if (index == 3) else { [pred3I] }}} })
-                            Row (modifier = Modifier.weight(8f)) {
-                                Icon(painterResource(id = if (modelType == 1) {actBasicInfoMap[actBasicMap[index]]!!.icon} else {actInfoMap[actMap[index]]!!.icon}), null)
-                                Column (modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 0.dp)) {
-//                                val actionCategory = if (item.id in listOf(0, 1, 2, 3)) { "sitting" }
-//                                else { if (item.id == 4) { "standing" }
-//                                else { if (item.id in listOf(5, 6, 7, 8)) { "lying" }
-//                                else { if (item.id == 9) { "walking" }
-//                                else { if (item.id == 10) { "running" }
-//                                else { if (item.id in listOf(11, 12)) { "walking" }
-//                                else { if (item.id == 13) { "movement" }
-//                                else { "" } } } } } } }
-
-                                    Text(text = if (modelType == 1) {actBasicInfoMap[actBasicMap[index]]!!.name} else {actInfoMap[actMap[index]]!!.name})
-                                    LinearProgressIndicator(progress = if (modelType == 1) {actCBasicMap[index]!!} else {actCMap[index]!!})
-                                }
-                            }
-                            Text(text = if (modelType == 1) {"${(actCBasicMap[index]!! * 100.0).roundToInt() / 100.0}"} else {"${(actCMap[index]!! * 100.0).roundToInt() / 100.0}"}, modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
 
 //        AnimatedContent(
 //            targetState = seconds,
@@ -889,11 +598,480 @@ class MainActivity : ComponentActivity() {
 //            )
 //        }
 
-            Column (
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Top,
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressbar3()
+//            Column (
+//                modifier = Modifier.fillMaxSize(),
+//                verticalArrangement = Arrangement.Top,
+//                horizontalAlignment = Alignment.CenterHorizontally) {
+//                CircularProgressbar3()
+//            }
+
+    }
+
+    @OptIn(ExperimentalFoundationApi::class, ExperimentalAnimationApi::class)
+    @Composable
+    fun ActPredictList() {
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+
+        val modelType = flow<Int> {
+            context.deviceDataStore.data.map {
+                it[intPreferencesKey("modelType")]
+            }.collect {
+                if (it != null) {
+                    this.emit(it)
+                }
+            }
+        }.collectAsState(initial = 1).value
+
+        Row(
+            modifier = Modifier
+                .padding(32.dp, 16.dp, 32.dp, 0.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.End) {
+            Icon(painterResource(id = R.drawable.chart), null,
+                modifier=Modifier.clickable {
+                    scope.launch {
+                        if (modelType == 0) {
+                            setModelType(context, 1)
+                        } else {
+                            if (modelType == 1) {
+                                setModelType(context, 0)
+                            }
+                        }
+                    }
+                },
+                tint = if (modelType == 1) {colorResource(id = R.color.blue)} else {colorResource(id = R.color.teal)},
+            )
+        }
+
+        Card (
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)) {
+            val actInfoMap = mapOf(
+                0 to ActionInfo(11, "Climbing stairs", R.drawable.walking),
+                1 to ActionInfo(12, "Descending stairs", R.drawable.walking),
+                2 to ActionInfo(3, "Desk work", R.drawable.sitting),
+                3 to ActionInfo(0, "Sitting", R.drawable.sitting),
+                4 to ActionInfo(1, "Sitting Bent Backward", R.drawable.sitting),
+                5 to ActionInfo(2, "Sitting Bent Forward", R.drawable.sitting),
+                6 to ActionInfo(4, "Standing", R.drawable.standing),
+                7 to ActionInfo(5, "Lying on left", R.drawable.lying),
+                8 to ActionInfo(8, "Lying on back", R.drawable.lying),
+                9 to ActionInfo(7, "Lying on stomach", R.drawable.lying),
+                10 to ActionInfo(6, "Lying on right", R.drawable.lying),
+                11 to ActionInfo(13, "Movement", R.drawable.movement),
+                12 to ActionInfo(10, "Running", R.drawable.running),
+                13 to ActionInfo(9, "Walking", R.drawable.walking),
+            )
+
+            val actBasicInfoMap = mapOf(
+                0 to ActionInfo(0, "Sitting / Standing", R.drawable.sitting),
+                1 to ActionInfo(5, "Lying Down", R.drawable.lying),
+                2 to ActionInfo(9, "Walking", R.drawable.walking),
+                3 to ActionInfo(10, "Running", R.drawable.running)
+            )
+
+            val pred0I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("pred0I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val pred0C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("pred0C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val pred1I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("pred1I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val pred1C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("pred1C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val pred2I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("pred2I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val pred2C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("pred2C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val pred3I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("pred3I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val pred3C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("pred3C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val actList by remember {
+                mutableStateOf(listOf(
+                    pred0I,
+                    pred1I,
+                    pred2I,
+                    pred3I
+                ))
+            }
+
+            val actMap = mapOf(
+                0 to pred0I,
+                1 to pred1I,
+                2 to pred2I,
+                3 to pred3I
+            )
+
+            val actCMap = mapOf(
+                0 to pred0C,
+                1 to pred1C,
+                2 to pred2C,
+                3 to pred3C
+            )
+
+            val predBasic0I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("predBasic0I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val predBasic0C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("predBasic0C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val predBasic1I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("predBasic1I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val predBasic1C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("predBasic1C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val predBasic2I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("predBasic2I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val predBasic2C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("predBasic2C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val predBasic3I = flow<Int> {
+                context.deviceDataStore.data.map {
+                    it[intPreferencesKey("predBasic3I")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0).value
+
+            val predBasic3C = flow<Float> {
+                context.deviceDataStore.data.map {
+                    it[floatPreferencesKey("predBasic3C")]
+                }.collect {
+                    if (it != null) {
+                        this.emit(it)
+                    }
+                }
+            }.collectAsState(initial = 0.0).value.toFloat()
+
+            val actBasicList by remember {
+                mutableStateOf(listOf(
+                    predBasic0I,
+                    predBasic1I,
+                    predBasic2I,
+                    predBasic3I
+                ))
+            }
+
+            val actBasicMap = mapOf(
+                0 to predBasic0I,
+                1 to predBasic1I,
+                2 to predBasic2I,
+                3 to predBasic3I
+            )
+
+            val actCBasicMap = mapOf(
+                0 to predBasic0C,
+                1 to predBasic1C,
+                2 to predBasic2C,
+                3 to predBasic3C
+            )
+
+//            Text(text = "$pred0I, $pred1I, $pred2I, $pred3I")
+
+            LazyColumn {
+                itemsIndexed(if (modelType == 1) {actBasicList} else {actList}) { index, _ ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+//                            .clickable {
+//                                actionList = actionList
+//                                    .shuffled()
+//                                    .slice(0..4)
+//                            }
+                            .animateItemPlacement()
+                            .padding(16.dp, 16.dp, 16.dp, 16.dp)) {
+                        val prog = if (modelType == 1) {actCBasicMap[index]!!} else {actCMap[index]!!}
+                        val act = if (modelType == 1) {actBasicInfoMap[actBasicMap[index]]!!} else {actInfoMap[actMap[index]]!!}
+
+                        // if (index == 0) {} else {if (index == 1) else { if (index == 2) else { if (index == 3) else { [pred3I] }}} })
+                        Row (modifier = Modifier.weight(8f)) {
+                            Icon(painterResource(id = if (modelType == 1) {actBasicInfoMap[actBasicMap[index]]!!.icon} else {actInfoMap[actMap[index]]!!.icon}), null)
+                            Column (modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 0.dp)) {
+//                                val actionCategory = if (item.id in listOf(0, 1, 2, 3)) { "sitting" }
+//                                else { if (item.id == 4) { "standing" }
+//                                else { if (item.id in listOf(5, 6, 7, 8)) { "lying" }
+//                                else { if (item.id == 9) { "walking" }
+//                                else { if (item.id == 10) { "running" }
+//                                else { if (item.id in listOf(11, 12)) { "walking" }
+//                                else { if (item.id == 13) { "movement" }
+//                                else { "" } } } } } } }
+
+                                Text(text = if (modelType == 1) {actBasicInfoMap[actBasicMap[index]]!!.name} else {actInfoMap[actMap[index]]!!.name})
+                                LinearProgressIndicator(progress = if (modelType == 1) {actCBasicMap[index]!!} else {actCMap[index]!!})
+                            }
+                        }
+                        Text(text = if (modelType == 1) {"${(actCBasicMap[index]!! * 100.0).roundToInt() / 100.0}"} else {"${(actCMap[index]!! * 100.0).roundToInt() / 100.0}"}, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalLifecycleComposeApi::class)
+    @Composable
+    fun ActHistoryList(viewModel: CardsViewModel) {
+        val cards by viewModel.cards.collectAsStateWithLifecycle()
+        val expandedCardIds by viewModel.expandedCardIdsList.collectAsStateWithLifecycle()
+
+        LazyColumn {
+            items(cards, ExpandableCardModel::id) { card ->
+                ExpandableCard(
+                    card = card,
+                    onCardArrowClick = { viewModel.onCardArrowClicked(card.id) },
+                    expanded = expandedCardIds.contains(card.id),
+                )
+            }
+        }
+    }
+
+    @SuppressLint("UnusedTransitionTargetStateParameter")
+    @Composable
+    fun ExpandableCard(
+        card: ExpandableCardModel,
+        onCardArrowClick: () -> Unit,
+        expanded: Boolean,
+    ) {
+        val cardCollapsedBackgroundColor = Color(0xFFFEFFFD)
+        val cardExpandedBackgroundColor = Color(0xFFFFDA6D)
+        val transitionState = remember {
+            MutableTransitionState(expanded).apply {
+                targetState = !expanded
+            }
+        }
+        val transition = updateTransition(transitionState, label = "transition")
+        val cardBgColor by transition.animateColor({
+            tween(durationMillis = EXPANSTION_TRANSITION_DURATION)
+        }, label = "bgColorTransition") {
+            if (expanded) cardExpandedBackgroundColor else cardCollapsedBackgroundColor
+        }
+        val cardPaddingHorizontal by transition.animateDp({
+            tween(durationMillis = EXPANSTION_TRANSITION_DURATION)
+        }, label = "paddingTransition") {
+            if (expanded) 48.dp else 24.dp
+        }
+        val cardElevation by transition.animateDp({
+            tween(durationMillis = EXPANSTION_TRANSITION_DURATION)
+        }, label = "elevationTransition") {
+            if (expanded) 24.dp else 4.dp
+        }
+        val cardRoundedCorners by transition.animateDp({
+            tween(
+                durationMillis = EXPANSTION_TRANSITION_DURATION,
+                easing = FastOutSlowInEasing
+            )
+        }, label = "cornersTransition") {
+            if (expanded) 0.dp else 16.dp
+        }
+        val arrowRotationDegree by transition.animateFloat({
+            tween(durationMillis = EXPANSTION_TRANSITION_DURATION)
+        }, label = "rotationDegreeTransition") {
+            if (expanded) 0f else 180f
+        }
+        val context = LocalContext.current
+        val contentColour = remember {
+            Color(ContextCompat.getColor(context, R.color.colorDayNightPurple))
+        }
+
+        Card(
+            backgroundColor = cardBgColor,
+            contentColor = contentColour,
+            elevation = cardElevation,
+            shape = RoundedCornerShape(cardRoundedCorners),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = cardPaddingHorizontal,
+                    vertical = 8.dp
+                )
+        ) {
+            Column {
+                Box {
+                    CardArrow(
+                        degrees = arrowRotationDegree,
+                        onClick = onCardArrowClick
+                    )
+                    CardTitle(title = card.title)
+                }
+                ExpandableContent(visible = expanded)
+            }
+        }
+    }
+
+    @Composable
+    fun CardArrow(
+        degrees: Float,
+        onClick: () -> Unit
+    ) {
+        IconButton(
+            onClick = onClick,
+            content = {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_expand_less_24),
+                    contentDescription = "Expandable Arrow",
+                    modifier = Modifier.rotate(degrees),
+                )
+            }
+        )
+    }
+
+    @Composable
+    fun CardTitle(title: String) {
+        Text(
+            text = title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            textAlign = TextAlign.Center,
+        )
+    }
+
+    @Composable
+    fun ExpandableContent(
+        visible: Boolean = true,
+    ) {
+        val enterTransition = remember {
+            expandVertically(
+                expandFrom = Alignment.Top,
+                animationSpec = tween(Companion.EXPANSTION_TRANSITION_DURATION)
+            ) + fadeIn(
+                initialAlpha = 0.3f,
+                animationSpec = tween(Companion.EXPANSTION_TRANSITION_DURATION)
+            )
+        }
+        val exitTransition = remember {
+            shrinkVertically(
+                // Expand from the top.
+                shrinkTowards = Alignment.Top,
+                animationSpec = tween(Companion.EXPANSTION_TRANSITION_DURATION)
+            ) + fadeOut(
+                // Fade in with the initial alpha of 0.3f.
+                animationSpec = tween(Companion.EXPANSTION_TRANSITION_DURATION)
+            )
+        }
+
+        AnimatedVisibility(
+            visible = visible,
+            enter = enterTransition,
+            exit = exitTransition
+        ) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                Spacer(modifier = Modifier.heightIn(100.dp))
+                Text(
+                    text = "Expandable content here",
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }
@@ -2295,4 +2473,8 @@ class MainActivity : ComponentActivity() {
         ActionInfo(12, "Descending stairs", R.drawable.walking),
         ActionInfo(13, "Movement", R.drawable.movement),
     )
+
+    companion object {
+        const val EXPANSTION_TRANSITION_DURATION = 450
+    }
 }
