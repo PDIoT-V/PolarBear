@@ -252,13 +252,14 @@ class MainActivity : ComponentActivity() {
                         val respeckThisPredFlag = resultListBasic[0].first
                         if (respeckThisPredFlag != respeckLastPredFlag) {
                             val respeckThisPredStartTime = System.currentTimeMillis()
+                            val respeckThisPredInterval = respeckThisPredStartTime - respeckLastPredStartTime
                             val entityAct = ActHistoryItem(
                                 actId = respeckLastPredId,
                                 actFlag = respeckThisPredFlag,
                                 actName = actBasicMap[respeckThisPredFlag]!!,
                                 actStartTime = respeckLastPredStartTime,
                                 actEndTime =  respeckThisPredStartTime,
-                                actInterval = respeckThisPredStartTime - respeckLastPredStartTime
+                                actInterval = respeckThisPredInterval
                             )
 
                             Log.d("Basic Record", entityAct.toString())
@@ -270,9 +271,17 @@ class MainActivity : ComponentActivity() {
 
                             Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
 
-                            val historyDaoR = actDb.getHistoryDao()
-                            Log.d("Basic Exist DB", historyDaoR.getAll().toString())
-                            historyDaoR.insert(entityAct)
+                            if (respeckThisPredInterval > 1000) {
+                                val historyDaoR = actDb.getHistoryDao()
+                                Log.d("Basic Exist DB", historyDaoR.getAll().toString())
+                                historyDaoR.insert(entityAct)
+
+                                val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
+                                sharedPreferences.edit().putInt(
+                                    "lastPredictId",
+                                    respeckLastPredId
+                                ).apply()
+                            }
                         } else {
                             val respeckThisPredStartTime = System.currentTimeMillis()
                             val respeckThisPredInterval = respeckThisPredStartTime - respeckLastPredStartTime
@@ -290,9 +299,17 @@ class MainActivity : ComponentActivity() {
 
                             Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
 
-                            val historyDaoR = actDb.getHistoryDao()
-                            Log.d("Basic Exist DB", historyDaoR.getAll().toString())
-                            historyDaoR.insert(entityAct)
+                            if (respeckThisPredInterval > 1000) {
+                                val historyDaoR = actDb.getHistoryDao()
+                                Log.d("Basic Exist DB", historyDaoR.getAll().toString())
+                                historyDaoR.insert(entityAct)
+
+                                val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
+                                sharedPreferences.edit().putInt(
+                                    "lastPredictId",
+                                    respeckLastPredId
+                                ).apply()
+                            }
                         }
                     }
 
@@ -691,11 +708,52 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            val terms = historyDao.getAllFlow().collectAsState(initial = listOf()).value
+            val terms = historyDao.getAllFlow().collectAsState(initial = listOf()).value.reversed()
 
-            Text(text = terms.toString())
+            val actBasicInfoMap = mapOf(
+                0 to ActionInfo(0, "Sitting / Standing", R.drawable.sitting40),
+                1 to ActionInfo(5, "Lying Down", R.drawable.lying40),
+                2 to ActionInfo(9, "Walking", R.drawable.walking40),
+                3 to ActionInfo(10, "Running", R.drawable.running40)
+            )
 
-            ActHistoryList(viewModel, actDb)
+            LazyColumn (
+                modifier = Modifier.padding(
+                    horizontal = 8.dp,
+                    vertical = 16.dp
+                )
+                    ) {
+                itemsIndexed(terms) { index, item ->
+                    Card(
+                        backgroundColor = Color.White,
+                        elevation = 4.dp,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                horizontal = 24.dp,
+                                vertical = 8.dp
+                            )
+                            .height(64.dp)
+                    ){
+                        Row {
+                            Icon(painterResource(id = actBasicInfoMap[item.actFlag]!!.icon), null, modifier = Modifier.weight(2f))
+                            Text(text = item.actName, modifier = Modifier.weight(4f), textAlign = TextAlign.Center,)
+                            val totalTime = item.actInterval / 1000
+                            val minutes = (totalTime % 3600) / 60
+                            val seconds = totalTime % 60
+
+                            val intervalString = String.format("%02d:%02d", minutes, seconds)
+
+                            Column (verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(text = intervalString, modifier = Modifier.weight(2f), textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                }
+            }
+//            ActHistoryList(viewModel, actDb)
         }
 
 
