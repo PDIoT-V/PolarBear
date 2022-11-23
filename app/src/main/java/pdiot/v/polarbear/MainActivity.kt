@@ -13,7 +13,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.annotation.RequiresApi
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -263,34 +262,10 @@ class MainActivity : ComponentActivity() {
                         val respeckThisPredFlag = resultListBasic[0].first
                         if (respeckThisPredFlag != respeckLastPredFlag) {
                             val respeckThisPredStartTime = System.currentTimeMillis()
-//                            val respeckThisPredInterval = respeckThisPredStartTime - respeckLastPredStartTime
 
                             respeckLastPredId += 1
                             respeckLastPredFlag = respeckThisPredFlag
                             respeckLastPredStartTime = respeckThisPredStartTime
-
-//                            val entityAct = ActHistoryItem(
-//                                actId = respeckLastPredId,
-//                                actFlag = respeckThisPredFlag,
-//                                actName = actBasicMap[respeckThisPredFlag]!!,
-//                                actStartTime = respeckLastPredStartTime,
-//                                actEndTime =  respeckLastPredEndTime,
-//                                actInterval = respeckThisPredInterval
-//                            )
-//
-//                            Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
-//
-//                            if (respeckThisPredInterval > 1000) {
-//                                val historyDaoR = actDb.getHistoryDao()
-//                                Log.d("Basic Exist DB", historyDaoR.getAll().toString())
-//                                historyDaoR.insert(entityAct)
-//
-//                                val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
-//                                sharedPreferences.edit().putInt(
-//                                    "lastPredictId",
-//                                    respeckLastPredId
-//                                ).apply()
-//                            }
                         } else {
                             val respeckThisPredStartTime = System.currentTimeMillis()
                             val respeckThisPredInterval = respeckThisPredStartTime - respeckLastPredStartTime
@@ -319,6 +294,11 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+
+                    val dataRDao = actDb.getDataRDao()
+                    dataRDao.insertR(ActDataItemR(System.currentTimeMillis(), respeckLastPredId,
+                        respeckLiveData.accelX, respeckLiveData.accelY, respeckLiveData.accelZ,
+                        respeckLiveData.gyro.x, respeckLiveData.gyro.y, respeckLiveData.gyro.z))
 
                     if (System.currentTimeMillis() - respeckLastPredTimeBasic > predInterval) {
                         lifecycleScope.launch {
@@ -722,19 +702,17 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    @RequiresApi(Build.VERSION_CODES.O)
     @Composable
     fun HomeScreen(innerPadding: PaddingValues, viewModel: CardsViewModel, actDb: ActHistoryDb) {
 //    val mainViewModel: CountViewModel = viewModel()
 //    val seconds by mainViewModel.seconds.collectAsState(initial = "00")
+        val historyDao = actDb.getHistoryDao()
 
         Column (
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            val historyDao = actDb.getHistoryDao()
-
             ActPredictList()
 
             Row(
@@ -746,6 +724,8 @@ class MainActivity : ComponentActivity() {
                     modifier=Modifier.clickable {
                         Thread {
                             actDb.getHistoryDao().clear()
+                            actDb.getDataRDao().clearR()
+                            actDb.getDataTDao().clearT()
                         }.start()
                     },
                     tint = colorResource(id = R.color.teal),
@@ -754,82 +734,9 @@ class MainActivity : ComponentActivity() {
 
             val terms = historyDao.getAllFlow().collectAsState(initial = listOf()).value.reversed()
 
-            val actBasicInfoMap = mapOf(
-                0 to ActionInfo(0, "Sitting / Standing", R.drawable.sitting40),
-                1 to ActionInfo(5, "Lying Down", R.drawable.lying40),
-                2 to ActionInfo(9, "Walking", R.drawable.walking40),
-                3 to ActionInfo(10, "Running", R.drawable.running40)
-            )
-
             LazyColumn {
                 itemsIndexed(terms) { index, item ->
-                    Card(
-                        backgroundColor = if (index == 0) {Color(0xFFa478bb)} else {Color(0xFFf7e7ff)},
-                        elevation = 4.dp,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(
-                                horizontal = 24.dp,
-                                vertical = 8.dp
-                            )
-                            .height(72.dp)
-                    ){
-                        Row (modifier = Modifier.fillMaxSize()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .weight(2f),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(painterResource(id = actBasicInfoMap[item.actFlag]!!.icon), null,
-                                tint = if (index == 0) {Color.White} else {Color.Black})
-                            }
-
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .weight(6f),
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .weight(1f),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(text = item.actName, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .weight(1f),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    val date = Date(item.actStartTime)
-                                    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.UK)
-                                    val startDt = sdf.format(date)
-                                    Text(text = startDt, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
-                                }
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .weight(2f),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                val totalTime = item.actInterval / 1000
-                                val minutes = (totalTime % 3600) / 60
-                                val seconds = totalTime % 60
-
-                                val intervalString = String.format("%02d:%02d", minutes, seconds)
-
-                                Text(text = intervalString, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
-                            }
-
-                        }
-                    }
+                    ActHistoryCard(actDb, index, item)
                 }
             }
 //            ActHistoryList(viewModel, actDb)
@@ -859,6 +766,170 @@ class MainActivity : ComponentActivity() {
 //                CircularProgressbar3()
 //            }
 
+    }
+
+    @Composable
+    fun ActHistoryCard(actDb: ActHistoryDb, index: Int, item: ActHistoryItem) {
+        val dataRDao = actDb.getDataRDao()
+        val dataTDao = actDb.getDataTDao()
+
+        val actBasicInfoMap = mapOf(
+            0 to ActionInfo(0, "Sitting / Standing", R.drawable.sitting40),
+            1 to ActionInfo(5, "Lying Down", R.drawable.lying40),
+            2 to ActionInfo(9, "Walking", R.drawable.walking40),
+            3 to ActionInfo(10, "Running", R.drawable.running40)
+        )
+
+        val isShowDetail = remember {
+            mutableStateOf(false)
+        }
+
+        Card(
+            backgroundColor = if (index == 0) {Color(0xFFa478bb)} else {Color(0xFFf7e7ff)},
+            elevation = 4.dp,
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 24.dp,
+                    vertical = 8.dp
+                )
+                .height(72.dp)
+                .clickable(
+                    onClick = {
+                        isShowDetail.value = !isShowDetail.value
+                    }
+                )
+        ){
+            Row (modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(2f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(painterResource(id = actBasicInfoMap[item.actFlag]!!.icon), null,
+                        tint = if (index == 0) {Color.White} else {Color.Black})
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(6f),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = item.actName, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val date = Date(item.actStartTime)
+                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.UK)
+                        val startDt = sdf.format(date)
+                        Text(text = startDt, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(2f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val totalTime = item.actInterval / 1000
+                    val minutes = (totalTime % 3600) / 60
+                    val seconds = totalTime % 60
+
+                    val intervalString = String.format("%02d:%02d", minutes, seconds)
+
+                    Text(text = intervalString, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
+                }
+
+
+            }
+        }
+
+        val dataR = dataRDao.getActDataR(item.actId!!).collectAsState(initial = listOf()).value
+
+        if (dataR.isNotEmpty()) {
+            val entriesAccX = mutableListOf<Entry>()
+            val entriesAccY = mutableListOf<Entry>()
+            val entriesAccZ = mutableListOf<Entry>()
+
+            val firstTime = dataR[0].actTimeStamp
+
+            for (i in dataR) {
+                val interval = (i.actTimeStamp - firstTime).toFloat() / 1000
+                entriesAccX.add(Entry(interval, i.actRespeckAccX))
+                entriesAccY.add(Entry(interval, i.actRespeckAccY))
+                entriesAccZ.add(Entry(interval, i.actRespeckAccZ))
+                Log.d("Data Set", "${i.actTimeStamp.toFloat()}, $i.actRespeckAccX, $i.actRespeckAccY, $i.actRespeckAccZ")
+            }
+
+            val datasetAccX = LineDataSet(entriesAccX, "Accel X")
+            val datasetAccY = LineDataSet(entriesAccY, "Accel Y")
+            val datasetAccZ = LineDataSet(entriesAccZ, "Accel Z")
+
+            datasetAccX.setDrawCircles(false)
+            datasetAccY.setDrawCircles(false)
+            datasetAccZ.setDrawCircles(false)
+
+            datasetAccX.setColor(
+                ContextCompat.getColor(
+                    this,
+                    R.color.red
+                )
+            )
+            datasetAccY.setColor(
+                ContextCompat.getColor(
+                    this,
+                    R.color.green
+                )
+            )
+            datasetAccZ.setColor(
+                ContextCompat.getColor(
+                    this,
+                    R.color.blue
+                )
+            )
+
+            val datasetRespeck = mutableListOf<ILineDataSet>()
+            datasetRespeck.add(datasetAccX)
+            datasetRespeck.add(datasetAccY)
+            datasetRespeck.add(datasetAccZ)
+
+            val respeckData = LineData(datasetRespeck)
+
+            AnimatedVisibility(visible = isShowDetail.value) {
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    factory = { ctx: Context ->
+                        val thingyLineChart = LineChart(ctx)
+
+                        thingyLineChart.data = respeckData
+                        thingyLineChart.apply {
+
+                        } },
+                    update = {
+//                    it.data.dataSets[0].addEntry(Entry(sensorData.x, sensorData.y))
+                        it.lineData.notifyDataChanged()
+                        it.notifyDataSetChanged()
+                        it.invalidate() //=> notifyDataSetChanged*/
+                    }
+                )
+            }
+        }
     }
 
     @OptIn(ExperimentalFoundationApi::class, ExperimentalAnimationApi::class)
