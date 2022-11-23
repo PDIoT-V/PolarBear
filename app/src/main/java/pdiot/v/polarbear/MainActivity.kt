@@ -860,72 +860,74 @@ class MainActivity : ComponentActivity() {
 
                 }
 
-                val dataR = dataRDao.getActDataR(item.actId!!).collectAsState(initial = listOf()).value
+                if (isShowDetail.value) {
+                    val dataR = dataRDao.getActDataR(item.actId!!).collectAsState(initial = listOf()).value
 
-                if (dataR.isNotEmpty() && index != 0) {
-                    val entriesAccX = mutableListOf<Entry>()
-                    val entriesAccY = mutableListOf<Entry>()
-                    val entriesAccZ = mutableListOf<Entry>()
+                    if (dataR.isNotEmpty() && index != 0) {
+                        val entriesAccX = mutableListOf<Entry>()
+                        val entriesAccY = mutableListOf<Entry>()
+                        val entriesAccZ = mutableListOf<Entry>()
 
-                    val firstTime = dataR[0].actTimeStamp
+                        val firstTime = dataR[0].actTimeStamp
 
-                    for (i in dataR) {
-                        val interval = (i.actTimeStamp - firstTime).toFloat() / 1000
-                        entriesAccX.add(Entry(interval, i.actRespeckAccX))
-                        entriesAccY.add(Entry(interval, i.actRespeckAccY))
-                        entriesAccZ.add(Entry(interval, i.actRespeckAccZ))
-                        Log.d("Data Set", "${i.actTimeStamp.toFloat()}, $i.actRespeckAccX, $i.actRespeckAccY, $i.actRespeckAccZ")
-                    }
+                        for (i in dataR) {
+                            val interval = (i.actTimeStamp - firstTime).toFloat() / 1000
+                            entriesAccX.add(Entry(interval, i.actRespeckAccX))
+                            entriesAccY.add(Entry(interval, i.actRespeckAccY))
+                            entriesAccZ.add(Entry(interval, i.actRespeckAccZ))
+                            Log.d("Data Set", "${i.actTimeStamp.toFloat()}, $i.actRespeckAccX, $i.actRespeckAccY, $i.actRespeckAccZ")
+                        }
 
-                    val datasetAccX = LineDataSet(entriesAccX, "Accel X")
-                    val datasetAccY = LineDataSet(entriesAccY, "Accel Y")
-                    val datasetAccZ = LineDataSet(entriesAccZ, "Accel Z")
+                        val datasetAccX = LineDataSet(entriesAccX, "Accel X")
+                        val datasetAccY = LineDataSet(entriesAccY, "Accel Y")
+                        val datasetAccZ = LineDataSet(entriesAccZ, "Accel Z")
 
-                    datasetAccX.setDrawCircles(false)
-                    datasetAccY.setDrawCircles(false)
-                    datasetAccZ.setDrawCircles(false)
+                        datasetAccX.setDrawCircles(false)
+                        datasetAccY.setDrawCircles(false)
+                        datasetAccZ.setDrawCircles(false)
 
-                    datasetAccX.color = ContextCompat.getColor(
-                        this@MainActivity,
-                        R.color.red
-                    )
-                    datasetAccY.color = ContextCompat.getColor(
-                        this@MainActivity,
-                        R.color.green
-                    )
-                    datasetAccZ.color = ContextCompat.getColor(
-                        this@MainActivity,
-                        R.color.blue
-                    )
+                        datasetAccX.color = ContextCompat.getColor(
+                            this@MainActivity,
+                            R.color.red
+                        )
+                        datasetAccY.color = ContextCompat.getColor(
+                            this@MainActivity,
+                            R.color.green
+                        )
+                        datasetAccZ.color = ContextCompat.getColor(
+                            this@MainActivity,
+                            R.color.blue
+                        )
 
-                    val datasetRespeck = mutableListOf<ILineDataSet>()
-                    datasetRespeck.add(datasetAccX)
-                    datasetRespeck.add(datasetAccY)
-                    datasetRespeck.add(datasetAccZ)
+                        val datasetRespeck = mutableListOf<ILineDataSet>()
+                        datasetRespeck.add(datasetAccX)
+                        datasetRespeck.add(datasetAccY)
+                        datasetRespeck.add(datasetAccZ)
 
-                    val respeckData = LineData(datasetRespeck)
+                        val respeckData = LineData(datasetRespeck)
 
-                    AnimatedVisibility(visible = isShowDetail.value, modifier = Modifier.background(Color(0xFFf7e7ff)).padding(vertical = 10.dp)) {
-                        AndroidView(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(150.dp),
-                            factory = { ctx: Context ->
-                                val thingyLineChart = LineChart(ctx)
+                        AnimatedVisibility(visible = isShowDetail.value, modifier = Modifier.background(Color(0xFFf7e7ff)).padding(vertical = 10.dp)) {
+                            AndroidView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(150.dp),
+                                factory = { ctx: Context ->
+                                    val thingyLineChart = LineChart(ctx)
 
-                                thingyLineChart.data = respeckData
-                                thingyLineChart.apply {
+                                    thingyLineChart.data = respeckData
+                                    thingyLineChart.apply {
 
-                                } },
-                            update = {
+                                    } },
+                                update = {
 //                                it.data.dataSets[0].addEntry(Entry((dataR.last().actTimeStamp.toFloat() - firstTime) / 1000, dataR.last().actRespeckAccX))
 //                                it.data.dataSets[1].addEntry(Entry((dataR.last().actTimeStamp.toFloat() - firstTime) / 1000, dataR.last().actRespeckAccY))
 //                                it.data.dataSets[2].addEntry(Entry((dataR.last().actTimeStamp.toFloat() - firstTime) / 1000, dataR.last().actRespeckAccZ))
 //                                it.lineData.notifyDataChanged()
 //                                it.notifyDataSetChanged()
 //                                it.invalidate() //=> notifyDataSetChanged*/
-                            }
-                        )
+                                }
+                            )
+                        }
                     }
                 }
             }
