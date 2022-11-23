@@ -790,144 +790,144 @@ class MainActivity : ComponentActivity() {
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier
                 .fillMaxWidth()
+                .wrapContentHeight()
                 .padding(
                     horizontal = 24.dp,
                     vertical = 8.dp
                 )
-                .height(72.dp)
                 .clickable(
                     onClick = {
                         isShowDetail.value = !isShowDetail.value
                     }
                 )
         ){
-            Row (modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(2f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(painterResource(id = actBasicInfoMap[item.actFlag]!!.icon), null,
-                        tint = if (index == 0) {Color.White} else {Color.Black})
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(6f),
-                ) {
+            Column {
+                Row (modifier = Modifier
+                    .fillMaxSize()
+                    .height(72.dp)) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .weight(1f),
+                            .weight(2f),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = item.actName, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
+                        Icon(painterResource(id = actBasicInfoMap[item.actFlag]!!.icon), null,
+                            tint = if (index == 0) {Color.White} else {Color.Black})
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(6f),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = item.actName, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val date = Date(item.actStartTime)
+                            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.UK)
+                            val startDt = sdf.format(date)
+                            Text(text = startDt, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
+                        }
                     }
 
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .weight(1f),
+                            .weight(2f),
                         contentAlignment = Alignment.Center
                     ) {
-                        val date = Date(item.actStartTime)
-                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.UK)
-                        val startDt = sdf.format(date)
-                        Text(text = startDt, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
+                        val totalTime = item.actInterval / 1000
+                        val minutes = (totalTime % 3600) / 60
+                        val seconds = totalTime % 60
+
+                        val intervalString = String.format("%02d:%02d", minutes, seconds)
+
+                        Text(text = intervalString, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
                     }
+
+
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(2f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val totalTime = item.actInterval / 1000
-                    val minutes = (totalTime % 3600) / 60
-                    val seconds = totalTime % 60
+                val dataR = dataRDao.getActDataR(item.actId!!).collectAsState(initial = listOf()).value
 
-                    val intervalString = String.format("%02d:%02d", minutes, seconds)
+                if (dataR.isNotEmpty() && index != 0) {
+                    val entriesAccX = mutableListOf<Entry>()
+                    val entriesAccY = mutableListOf<Entry>()
+                    val entriesAccZ = mutableListOf<Entry>()
 
-                    Text(text = intervalString, textAlign = TextAlign.Center, color = if (index == 0) {Color.White} else {Color.Black})
-                }
+                    val firstTime = dataR[0].actTimeStamp
 
-
-            }
-        }
-
-        val dataR = dataRDao.getActDataR(item.actId!!).collectAsState(initial = listOf()).value
-
-        if (dataR.isNotEmpty()) {
-            val entriesAccX = mutableListOf<Entry>()
-            val entriesAccY = mutableListOf<Entry>()
-            val entriesAccZ = mutableListOf<Entry>()
-
-            val firstTime = dataR[0].actTimeStamp
-
-            for (i in dataR) {
-                val interval = (i.actTimeStamp - firstTime).toFloat() / 1000
-                entriesAccX.add(Entry(interval, i.actRespeckAccX))
-                entriesAccY.add(Entry(interval, i.actRespeckAccY))
-                entriesAccZ.add(Entry(interval, i.actRespeckAccZ))
-                Log.d("Data Set", "${i.actTimeStamp.toFloat()}, $i.actRespeckAccX, $i.actRespeckAccY, $i.actRespeckAccZ")
-            }
-
-            val datasetAccX = LineDataSet(entriesAccX, "Accel X")
-            val datasetAccY = LineDataSet(entriesAccY, "Accel Y")
-            val datasetAccZ = LineDataSet(entriesAccZ, "Accel Z")
-
-            datasetAccX.setDrawCircles(false)
-            datasetAccY.setDrawCircles(false)
-            datasetAccZ.setDrawCircles(false)
-
-            datasetAccX.setColor(
-                ContextCompat.getColor(
-                    this,
-                    R.color.red
-                )
-            )
-            datasetAccY.setColor(
-                ContextCompat.getColor(
-                    this,
-                    R.color.green
-                )
-            )
-            datasetAccZ.setColor(
-                ContextCompat.getColor(
-                    this,
-                    R.color.blue
-                )
-            )
-
-            val datasetRespeck = mutableListOf<ILineDataSet>()
-            datasetRespeck.add(datasetAccX)
-            datasetRespeck.add(datasetAccY)
-            datasetRespeck.add(datasetAccZ)
-
-            val respeckData = LineData(datasetRespeck)
-
-            AnimatedVisibility(visible = isShowDetail.value) {
-                AndroidView(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    factory = { ctx: Context ->
-                        val thingyLineChart = LineChart(ctx)
-
-                        thingyLineChart.data = respeckData
-                        thingyLineChart.apply {
-
-                        } },
-                    update = {
-//                    it.data.dataSets[0].addEntry(Entry(sensorData.x, sensorData.y))
-                        it.lineData.notifyDataChanged()
-                        it.notifyDataSetChanged()
-                        it.invalidate() //=> notifyDataSetChanged*/
+                    for (i in dataR) {
+                        val interval = (i.actTimeStamp - firstTime).toFloat() / 1000
+                        entriesAccX.add(Entry(interval, i.actRespeckAccX))
+                        entriesAccY.add(Entry(interval, i.actRespeckAccY))
+                        entriesAccZ.add(Entry(interval, i.actRespeckAccZ))
+                        Log.d("Data Set", "${i.actTimeStamp.toFloat()}, $i.actRespeckAccX, $i.actRespeckAccY, $i.actRespeckAccZ")
                     }
-                )
+
+                    val datasetAccX = LineDataSet(entriesAccX, "Accel X")
+                    val datasetAccY = LineDataSet(entriesAccY, "Accel Y")
+                    val datasetAccZ = LineDataSet(entriesAccZ, "Accel Z")
+
+                    datasetAccX.setDrawCircles(false)
+                    datasetAccY.setDrawCircles(false)
+                    datasetAccZ.setDrawCircles(false)
+
+                    datasetAccX.color = ContextCompat.getColor(
+                        this@MainActivity,
+                        R.color.red
+                    )
+                    datasetAccY.color = ContextCompat.getColor(
+                        this@MainActivity,
+                        R.color.green
+                    )
+                    datasetAccZ.color = ContextCompat.getColor(
+                        this@MainActivity,
+                        R.color.blue
+                    )
+
+                    val datasetRespeck = mutableListOf<ILineDataSet>()
+                    datasetRespeck.add(datasetAccX)
+                    datasetRespeck.add(datasetAccY)
+                    datasetRespeck.add(datasetAccZ)
+
+                    val respeckData = LineData(datasetRespeck)
+
+                    AnimatedVisibility(visible = isShowDetail.value, modifier = Modifier.background(Color(0xFFf7e7ff)).padding(vertical = 10.dp)) {
+                        AndroidView(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(150.dp),
+                            factory = { ctx: Context ->
+                                val thingyLineChart = LineChart(ctx)
+
+                                thingyLineChart.data = respeckData
+                                thingyLineChart.apply {
+
+                                } },
+                            update = {
+//                                it.data.dataSets[0].addEntry(Entry((dataR.last().actTimeStamp.toFloat() - firstTime) / 1000, dataR.last().actRespeckAccX))
+//                                it.data.dataSets[1].addEntry(Entry((dataR.last().actTimeStamp.toFloat() - firstTime) / 1000, dataR.last().actRespeckAccY))
+//                                it.data.dataSets[2].addEntry(Entry((dataR.last().actTimeStamp.toFloat() - firstTime) / 1000, dataR.last().actRespeckAccZ))
+//                                it.lineData.notifyDataChanged()
+//                                it.notifyDataSetChanged()
+//                                it.invalidate() //=> notifyDataSetChanged*/
+                            }
+                        )
+                    }
+                }
             }
         }
     }
