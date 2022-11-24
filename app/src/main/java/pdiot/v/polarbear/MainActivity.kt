@@ -170,7 +170,7 @@ class MainActivity : ComponentActivity() {
 
         startSpeckService()
 
-        Log.d(activityTAG, "onCreate: registering respeck receiver")
+        //Log.d(activityTAG, "onCreate: registering respeck receiver")
         // register respeck receiver
         respeckReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -181,7 +181,7 @@ class MainActivity : ComponentActivity() {
                         intent.getSerializableExtra(Constants.RESPECK_LIVE_DATA) as RESpeckLiveData
                     }
 
-                    Log.d("Live", "onReceive: liveData = $respeckLiveData")
+                    //Log.d("Live", "onReceive: liveData = $respeckLiveData")
                     lifecycleScope.launch {
                         setRespeckOn(context)
                         setRespeckLoading(context, false)
@@ -200,17 +200,17 @@ class MainActivity : ComponentActivity() {
                     // Creates inputs for reference.
                     val inputFeature0Basic = TensorBuffer.createFixedSize(intArrayOf(1, 50, 6), DataType.FLOAT32)
 
-                    Log.d("Basic Live Window Before Drop", "${respeckBasicLiveWindow}, ${respeckBasicLiveWindow.size}")
+                    //Log.d("Basic Live Window Before Drop", "${respeckBasicLiveWindow}, ${respeckBasicLiveWindow.size}")
 
                     respeckBasicLiveWindow = respeckBasicLiveWindow.drop(6).toMutableList()
-
-                    val inputArrayListBasic = respeckBasicLiveWindow
-                    Log.d("Basic Live Window", "${inputArrayListBasic}, ${inputArrayListBasic.size}")
-                    inputArrayListBasic.addAll(
+                    respeckBasicLiveWindow.addAll(
                         arrayListOf(respeckLiveData.accelX, respeckLiveData.accelY, respeckLiveData.accelZ,
                             respeckLiveData.gyro.x, respeckLiveData.gyro.y, respeckLiveData.gyro.z)
                     )
-                    Log.d("Basic Input Array", "${inputArrayListBasic}, ${inputArrayListBasic.size}")
+                    val inputArrayListBasic = respeckBasicLiveWindow
+                    //Log.d("Basic Live Window", "${inputArrayListBasic}, ${inputArrayListBasic.size}")
+
+                    //Log.d("Basic Input Array", "${inputArrayListBasic}, ${inputArrayListBasic.size}")
 
                     val inputArrayBasic = inputArrayListBasic.toFloatArray()
 
@@ -224,7 +224,7 @@ class MainActivity : ComponentActivity() {
 
                     val resultListBasic = getBasicResultList(outputFeature0Basic.floatArray)
 
-                    Log.d("Basic Model Prediction", "${floatArrayBasic[0]}, ${floatArrayBasic[1]}, ${floatArrayBasic[2]}, ${floatArrayBasic[3]}")
+                    //Log.d("Basic Model Prediction", "${floatArrayBasic[0]}, ${floatArrayBasic[1]}, ${floatArrayBasic[2]}, ${floatArrayBasic[3]}")
 
                     // Releases model resources if no longer used.
                     modelBasic.close()
@@ -236,7 +236,7 @@ class MainActivity : ComponentActivity() {
                         3 to "Running"
                     )
 
-                    Log.d("Start With State", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
+                    //Log.d("Start With State", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
 
                     if (respeckLastPredId == 0) {
                         val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
@@ -257,7 +257,7 @@ class MainActivity : ComponentActivity() {
                             respeckLastPredStartTime = System.currentTimeMillis()
                         }
 
-                        Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
+                        //Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
                     } else {
                         val respeckThisPredFlag = resultListBasic[0].first
                         if (respeckThisPredFlag != respeckLastPredFlag) {
@@ -279,11 +279,11 @@ class MainActivity : ComponentActivity() {
                                 actInterval = respeckThisPredInterval
                             )
 
-                            Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
+                           // Log.d("Basic State Update", "$respeckLastPredId, $respeckLastPredFlag, $respeckLastPredStartTime")
 
                             if (respeckThisPredInterval > 1000) {
                                 val historyDaoR = actDb.getHistoryDao()
-                                Log.d("Basic Exist DB", historyDaoR.getAll().toString())
+                                //Log.d("Basic Exist DB", historyDaoR.getAll().toString())
                                 historyDaoR.insert(entityAct)
 
                                 val sharedPreferences = getSharedPreferences(Constants.PREFERENCES_FILE, Context.MODE_PRIVATE)
@@ -304,10 +304,10 @@ class MainActivity : ComponentActivity() {
                         lifecycleScope.launch {
                             setPredBasic(context, resultListBasic)
                             respeckLastPredTimeBasic = System.currentTimeMillis()
-                            Log.d("Last Prediction Time", "$respeckLastPredTimeBasic")
+                            //Log.d("Last Prediction Time", "$respeckLastPredTimeBasic")
 
                             respeckLastPredFlag = resultListBasic[0].first
-                            Log.d("Last Prediction State", "$respeckLastPredFlag")
+                            //Log.d("Last Prediction State", "$respeckLastPredFlag")
                         }
                     }
 
@@ -317,17 +317,17 @@ class MainActivity : ComponentActivity() {
                     // Creates inputs for reference.
                     val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(1, 50, 6), DataType.FLOAT32)
 
-                    Log.d("Live Window Before Drop", "${respeckLiveWindow}, ${respeckLiveWindow.size}")
+                    //Log.d("Live Window Before Drop", "${respeckLiveWindow}, ${respeckLiveWindow.size}")
 
                     respeckLiveWindow = respeckLiveWindow.drop(6).toMutableList()
 
                     val inputArrayList = respeckLiveWindow
-                    Log.d("Live Window", "${inputArrayList}, ${inputArrayList.size}")
+                    //Log.d("Live Window", "${inputArrayList}, ${inputArrayList.size}")
                     inputArrayList.addAll(
                         arrayListOf(respeckLiveData.accelX, respeckLiveData.accelY, respeckLiveData.accelZ,
                             respeckLiveData.gyro.x, respeckLiveData.gyro.y, respeckLiveData.gyro.z)
                     )
-                    Log.d("Input Array", "${inputArrayList}, ${inputArrayList.size}")
+                    //Log.d("Input Array", "${inputArrayList}, ${inputArrayList.size}")
                     val inputArray = inputArrayList.toFloatArray()
 
                     inputFeature0.loadArray(inputArray)
@@ -339,7 +339,7 @@ class MainActivity : ComponentActivity() {
                     val resultList = getResultList(outputFeature0.floatArray)
                     respeckResultList = outputFeature0.floatArray
 
-                    Log.d("Model Prediction", resultList.toString())
+                    //Log.d("Model Prediction", resultList.toString())
 
                     // Releases model resources if no longer used.
                     model.close()
@@ -349,7 +349,7 @@ class MainActivity : ComponentActivity() {
                             lifecycleScope.launch {
                                 setPred(context, resultList)
                                 respeckLastPredTime = System.currentTimeMillis()
-                                Log.d("Last Prediction Time", "$respeckLastPredTime")
+                                //Log.d("Last Prediction Time", "$respeckLastPredTime")
                             }
                         }
                     }
@@ -364,7 +364,7 @@ class MainActivity : ComponentActivity() {
         val respeckHandler = Handler(respeckLooper)
         this.registerReceiver(respeckReceiver, respeckFilterTest, null, respeckHandler)
 
-        Log.d(activityTAG, "onCreate: registering thingy receiver")
+        //Log.d(activityTAG, "onCreate: registering thingy receiver")
         // register thingy receiver
         thingyReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -377,30 +377,7 @@ class MainActivity : ComponentActivity() {
 
                     thingyIsRunning = true
 
-                    Log.d("Live", "onReceive: thingyLiveData = $thingyLiveData")
-
-                    val modelT = AllModelThingy.newInstance(context)
-                    // Creates inputs for reference.
-
-                    val inputFeatureT = TensorBuffer.createFixedSize(intArrayOf(1, 50, 9), DataType.FLOAT32)
-
-                    Log.d("Live Window Before Drop", "${thingyLiveWindow}, ${thingyLiveWindow.size}")
-                    thingyLiveWindow = thingyLiveWindow.drop(9).toMutableList()
-
-                    Log.d("Live Window", "${thingyLiveWindow}, ${thingyLiveWindow.size}")
-                    val inputArrayT = thingyLiveWindow
-                    inputArrayT.addAll(
-                        arrayListOf(thingyLiveData.accelX, thingyLiveData.accelY, thingyLiveData.accelZ,
-                            thingyLiveData.gyro.x, thingyLiveData.gyro.y, thingyLiveData.gyro.z,thingyLiveData.mag.x,thingyLiveData.mag.y,thingyLiveData.mag.z)
-                    )
-                    inputFeatureT.loadArray(inputArrayT.toFloatArray())
-                    // Runs model inference and gets result.
-
-                    val outputsT = modelT.process(inputFeatureT)
-                    val outputFeatureT = outputsT.outputFeature0AsTensorBuffer
-//                    val resultListT = getResultList(outputFeatureT.floatArray)
-
-                    val finalResultListT = getResultList(comparePrediction(respeckResultList,outputFeatureT.floatArray, ))
+                    //Log.d("Live", "onReceive: thingyLiveData = $thingyLiveData")
 
                     lifecycleScope.launch {
                         setThingyOn(context)
@@ -417,10 +394,33 @@ class MainActivity : ComponentActivity() {
                             "${thingyLiveData.mag.x}",
                             "${thingyLiveData.mag.y}",
                             "${thingyLiveData.mag.z}")
+
+                        val modelT = AllModelThingy.newInstance(context)
+                        // Creates inputs for reference.
+
+                        val inputFeatureT = TensorBuffer.createFixedSize(intArrayOf(1, 50, 9), DataType.FLOAT32)
+
+                        //Log.d("Live Window Before Drop", "${thingyLiveWindow}, ${thingyLiveWindow.size}")
+                        thingyLiveWindow = thingyLiveWindow.drop(9).toMutableList()
+                        thingyLiveWindow.addAll(arrayListOf(thingyLiveData.accelX, thingyLiveData.accelY, thingyLiveData.accelZ,
+                        thingyLiveData.gyro.x, thingyLiveData.gyro.y, thingyLiveData.gyro.z,thingyLiveData.mag.x,thingyLiveData.mag.y,thingyLiveData.mag.z))
+                        //Log.d("Live Window", "${thingyLiveWindow}, ${thingyLiveWindow.size}")
+                        val inputArrayT = thingyLiveWindow
+
                         if (System.currentTimeMillis() - thingyLastPredTime > predInterval) {
+
+                            inputFeatureT.loadArray(inputArrayT.toFloatArray())
+                            // Runs model inference and gets result.
+
+                            val outputsT = modelT.process(inputFeatureT)
+                            val outputFeatureT = outputsT.outputFeature0AsTensorBuffer
+//                    val resultListT = getResultList(outputFeatureT.floatArray)
+
+                            val finalResultListT = getResultList(comparePrediction(respeckResultList,outputFeatureT.floatArray))
                             setPred(context, finalResultListT)
+                            modelT.close()
                             thingyLastPredTime = System.currentTimeMillis()
-                            Log.d("Last Prediction Time", "$thingyLastPredTime")
+                            //Log.d("Last Prediction Time", "$thingyLastPredTime")
                         }
                     }
                 }
@@ -528,12 +528,17 @@ class MainActivity : ComponentActivity() {
     private fun comparePrediction(aR:FloatArray, aT:FloatArray) : FloatArray{
         val resultList : MutableList<Float> = mutableListOf()
         if (aR.isNotEmpty() && aT.isNotEmpty()){
-            for (i in 0 .. aR.size-1){
-                resultList.add((aR[i]+aT[i])/2)
+            if((aT[6]==aT.max())&&aT[6]>0.5) {
+                return aT
+            }
+            else{
+                for (i in 0..aR.size - 1) {
+                    resultList.add((((aR[i]*0.8) + (aT[i])*0.2).toFloat()))
+                }
             }
         }
         return resultList.toFloatArray()
-        
+
 
     }
 
@@ -740,6 +745,7 @@ class MainActivity : ComponentActivity() {
                     ActHistoryCard(actDb, index, item)
                 }
             }
+
 //            ActHistoryList(viewModel, actDb)
         }
 
