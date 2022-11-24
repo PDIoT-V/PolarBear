@@ -78,7 +78,8 @@ import org.tensorflow.lite.DataType
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import pdiot.v.polarbear.bluetooth.BluetoothSpeckService
 import pdiot.v.polarbear.login.*
-import pdiot.v.polarbear.ml.AllModel90
+import pdiot.v.polarbear.ml.AllModelRespeck
+import pdiot.v.polarbear.ml.AllModelThingy
 import pdiot.v.polarbear.ml.Essential4Model99
 import pdiot.v.polarbear.ui.theme.PolarBearTheme
 import pdiot.v.polarbear.utils.Constants
@@ -87,7 +88,6 @@ import pdiot.v.polarbear.utils.ThingyLiveData
 import pdiot.v.polarbear.utils.Utils
 import kotlin.math.roundToInt
 import kotlin.system.exitProcess
-import pdiot.v.polarbear.ml.AllModelThingy
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.collections.ArrayList
@@ -121,7 +121,7 @@ class MainActivity : ComponentActivity() {
     var respeckLastPredStartTime: Long = 0
     var respeckLastPredEndTime: Long = 0
 
-    private var thingyLiveWindow = MutableList(50 * 6) { 0.toFloat() }
+    private var thingyLiveWindow = MutableList(50 * 9) { 0.toFloat() }
 
     private var thingyIsRunning = false
 
@@ -312,7 +312,7 @@ class MainActivity : ComponentActivity() {
                     }
 
 
-                    val model = AllModel90.newInstance(context)
+                    val model = AllModelRespeck.newInstance(context)
 
                     // Creates inputs for reference.
                     val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(1, 50, 6), DataType.FLOAT32)
@@ -382,16 +382,16 @@ class MainActivity : ComponentActivity() {
                     val modelT = AllModelThingy.newInstance(context)
                     // Creates inputs for reference.
 
-                    val inputFeatureT = TensorBuffer.createFixedSize(intArrayOf(1, 50, 6), DataType.FLOAT32)
+                    val inputFeatureT = TensorBuffer.createFixedSize(intArrayOf(1, 50, 9), DataType.FLOAT32)
 
                     Log.d("Live Window Before Drop", "${thingyLiveWindow}, ${thingyLiveWindow.size}")
-                    thingyLiveWindow = thingyLiveWindow.drop(6).toMutableList()
+                    thingyLiveWindow = thingyLiveWindow.drop(9).toMutableList()
 
                     Log.d("Live Window", "${thingyLiveWindow}, ${thingyLiveWindow.size}")
                     val inputArrayT = thingyLiveWindow
                     inputArrayT.addAll(
                         arrayListOf(thingyLiveData.accelX, thingyLiveData.accelY, thingyLiveData.accelZ,
-                            thingyLiveData.gyro.x, thingyLiveData.gyro.y, thingyLiveData.gyro.z)
+                            thingyLiveData.gyro.x, thingyLiveData.gyro.y, thingyLiveData.gyro.z,thingyLiveData.mag.x,thingyLiveData.mag.y,thingyLiveData.mag.z)
                     )
                     inputFeatureT.loadArray(inputArrayT.toFloatArray())
                     // Runs model inference and gets result.
@@ -400,7 +400,7 @@ class MainActivity : ComponentActivity() {
                     val outputFeatureT = outputsT.outputFeature0AsTensorBuffer
 //                    val resultListT = getResultList(outputFeatureT.floatArray)
 
-                    val finalResultListT = getResultList(comparePrediction(outputFeatureT.floatArray, respeckResultList))
+                    val finalResultListT = getResultList(comparePrediction(respeckResultList,outputFeatureT.floatArray, ))
 
                     lifecycleScope.launch {
                         setThingyOn(context)
@@ -533,6 +533,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         return resultList.toFloatArray()
+        
 
     }
 
